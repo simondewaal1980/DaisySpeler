@@ -13,6 +13,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -81,6 +82,7 @@ class DaisyPlaybackService : MediaSessionService() {
           setHandleAudioBecomingNoisy(true)
           setWakeMode(C.WAKE_MODE_LOCAL)
           addListener(playerListener)
+          setPlaybackSpeed(savedPlaybackSpeed())
         }
 
     val session =
@@ -272,6 +274,11 @@ class DaisyPlaybackService : MediaSessionService() {
         .build()
     }
 
+  private fun savedPlaybackSpeed(): Float =
+    PlaybackSpeedOptions.sanitize(
+      playbackPrefs.getFloat(KEY_PLAYBACK_SPEED, PlaybackSpeedOptions.DEFAULT_SPEED)
+    )
+
   private fun updateSessionIntent() {
     mediaSession?.setSessionActivity(
       PendingIntent.getActivity(
@@ -373,6 +380,13 @@ class DaisyPlaybackService : MediaSessionService() {
         Log.e(TAG, "Playback error", error)
         recordStop("ERROR")
       }
+
+      override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+        playbackPrefs
+          .edit()
+          .putFloat(KEY_PLAYBACK_SPEED, playbackParameters.speed)
+          .apply()
+      }
     }
 
   private inner class SessionCallback : MediaSession.Callback {
@@ -388,6 +402,7 @@ class DaisyPlaybackService : MediaSessionService() {
           .add(SessionCommand(PlaybackCommands.PAUSE_PLAYBACK, Bundle.EMPTY))
           .add(SessionCommand(PlaybackCommands.SET_SLEEP_TIMER, Bundle.EMPTY))
           .add(SessionCommand(PlaybackCommands.CANCEL_SLEEP_TIMER, Bundle.EMPTY))
+          .add(SessionCommand(PlaybackCommands.SET_PLAYBACK_SPEED, Bundle.EMPTY))
           .build()
       return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
         .setAvailableSessionCommands(commands)
@@ -506,6 +521,12 @@ class DaisyPlaybackService : MediaSessionService() {
           }
         }
         PlaybackCommands.CANCEL_SLEEP_TIMER -> sleepTimerManager.cancel()
+        PlaybackCommands.SET_PLAYBACK_SPEED -> {
+          val speed = args.getFloat(PlaybackCommands.KEY_SPEED, Float.NaN)
+          if (!speed.isNaN()) {
+            player.setPlaybackSpeed(PlaybackSpeedOptions.sanitize(speed))
+          }
+        }
       }
       return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
@@ -515,6 +536,7 @@ class DaisyPlaybackService : MediaSessionService() {
     const val TAG = "DaisyPlayback"
     const val PREFS_NAME = "daisy_playback"
     const val KEY_LAST_BOOK_ID = "last_book_id"
+    const val KEY_PLAYBACK_SPEED = "playback_speed"
     const val SLEEP_FADE_DURATION_MS = 3_000L
     const val SLEEP_FADE_STEP_MS = 100L
   }

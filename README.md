@@ -28,6 +28,9 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
 - Slaaptimer in stappen van 15 minuten tot 2 uur, met aftelling. Bij het
   verstrijken pauzeert de weergave en wordt een bookmark met reden
   `SLEEP_TIMER` opgeslagen. In debugbuilds is er een testoptie van 10 seconden.
+- Afspeelsnelheid van 0,5× (twee keer zo langzaam) tot 2,0× (twee keer zo snel),
+  in stappen van 0,1×. De gekozen snelheid blijft bewaard na een herstart en de
+  stemtoonhoogte verandert niet mee.
 - Afspelen op de achtergrond via een Media3 `MediaSessionService`, met
   meldings- en vergrendelschermbediening.
 - Bluetooth- en headsetbediening via AVRCP/media buttons: play/pause,

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -79,15 +80,18 @@ import nl.simon.daisyspeler.data.storage.BookmarkPoint
 import nl.simon.daisyspeler.data.storage.BookmarkSession
 import nl.simon.daisyspeler.data.storage.SleepTimerOptions
 import nl.simon.daisyspeler.data.storage.SleepTimerState
+import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
 import nl.simon.daisyspeler.ui.components.BookCover
 import nl.simon.daisyspeler.util.formatDate
 import nl.simon.daisyspeler.util.formatDuration
 import nl.simon.daisyspeler.util.formatTimer
+import kotlin.math.abs
 
 private enum class PlayerSheet {
   TOC,
   BOOKMARKS,
   SLEEP,
+  SPEED,
 }
 
 private enum class TocFilter(val label: String) {
@@ -183,6 +187,7 @@ fun PlayerScreen(
       onOpenToc = { sheet = PlayerSheet.TOC },
       onOpenBookmarks = { sheet = PlayerSheet.BOOKMARKS },
       onOpenSleepTimer = { sheet = PlayerSheet.SLEEP },
+      onOpenSpeed = { sheet = PlayerSheet.SPEED },
       modifier = Modifier.fillMaxSize().padding(padding),
     )
   }
@@ -228,6 +233,13 @@ fun PlayerScreen(
         },
       )
     }
+    PlayerSheet.SPEED -> {
+      SpeedSheet(
+        speed = playback.speed,
+        onDismiss = { sheet = null },
+        onSelect = viewModel::setSpeed,
+      )
+    }
     null -> Unit
   }
 }
@@ -246,6 +258,7 @@ private fun PlayerContent(
   onOpenToc: () -> Unit,
   onOpenBookmarks: () -> Unit,
   onOpenSleepTimer: () -> Unit,
+  onOpenSpeed: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   var scrubPosition by remember { mutableStateOf<Float?>(null) }
@@ -398,6 +411,16 @@ private fun PlayerContent(
         Spacer(Modifier.width(4.dp))
         Icon(Icons.Default.SkipNext, contentDescription = null, modifier = Modifier.size(20.dp))
       }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    OutlinedButton(
+      onClick = onOpenSpeed,
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(20.dp))
+      Spacer(Modifier.width(6.dp))
+      Text("Afspeelsnelheid ${PlaybackSpeedOptions.format(playback.speed)}")
     }
 
     Spacer(Modifier.height(16.dp))
@@ -784,6 +807,58 @@ private fun SleepTimerSheet(
             Text("Slaaptimer uitzetten")
           }
         }
+      }
+      Spacer(Modifier.height(24.dp))
+    }
+  }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SpeedSheet(
+  speed: Float,
+  onDismiss: () -> Unit,
+  onSelect: (Float) -> Unit,
+) {
+  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+  ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+      Text(
+        "Afspeelsnelheid",
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.SemiBold,
+      )
+      Text(
+        "0,5× is twee keer zo langzaam, 2,0× twee keer zo snel. " +
+          "De stem blijft op dezelfde toonhoogte.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Spacer(Modifier.height(16.dp))
+      Text(
+        "Nu: ${PlaybackSpeedOptions.format(speed)}",
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+      )
+      Spacer(Modifier.height(12.dp))
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PlaybackSpeedOptions.PRESETS.chunked(4).forEach { row ->
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            row.forEach { option ->
+              FilterChip(
+                selected = abs(speed - option) < 0.01f,
+                onClick = { onSelect(option) },
+                label = { Text(PlaybackSpeedOptions.format(option), maxLines = 1) },
+                modifier = Modifier.weight(1f),
+              )
+            }
+          }
+        }
+      }
+      Spacer(Modifier.height(8.dp))
+      TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+        Text("Klaar")
       }
       Spacer(Modifier.height(24.dp))
     }

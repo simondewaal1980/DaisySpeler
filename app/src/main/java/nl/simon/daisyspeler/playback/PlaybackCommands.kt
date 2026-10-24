@@ -6,7 +6,9 @@ object PlaybackCommands {
   const val PAUSE_PLAYBACK = "nl.simon.daisyspeler.PAUSE_PLAYBACK"
   const val SET_SLEEP_TIMER = "nl.simon.daisyspeler.SET_SLEEP_TIMER"
   const val CANCEL_SLEEP_TIMER = "nl.simon.daisyspeler.CANCEL_SLEEP_TIMER"
+  const val SET_PLAYBACK_SPEED = "nl.simon.daisyspeler.SET_PLAYBACK_SPEED"
 
   const val KEY_BOOK_ID = "bookId"
   const val KEY_DURATION_MS = "durationMs"
+  const val KEY_SPEED = "speed"
 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
@@ -29,6 +30,7 @@ import nl.simon.daisyspeler.data.storage.BookmarkPoint
 import nl.simon.daisyspeler.data.storage.BookmarkSession
 import nl.simon.daisyspeler.playback.DaisyPlaybackService
 import nl.simon.daisyspeler.playback.PlaybackCommands
+import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
 import kotlin.math.max
 
 data class PlaybackUiState(
@@ -38,6 +40,7 @@ data class PlaybackUiState(
   val durationMs: Long = 0L,
   val heading: String? = null,
   val page: String? = null,
+  val speed: Float = PlaybackSpeedOptions.DEFAULT_SPEED,
 )
 
 class PlayerViewModel(
@@ -75,6 +78,9 @@ class PlayerViewModel(
       override fun onPlaybackStateChanged(playbackState: Int) = updatePlaybackState()
 
       override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) =
+        updatePlaybackState()
+
+      override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) =
         updatePlaybackState()
 
       override fun onPlayerError(error: PlaybackException) {
@@ -186,6 +192,7 @@ class PlayerViewModel(
         durationMs = book.totalDurationMs,
         heading = heading,
         page = page,
+        speed = controller.playbackParameters.speed,
       )
   }
 
@@ -278,6 +285,20 @@ class PlayerViewModel(
       SessionCommand(PlaybackCommands.CANCEL_SLEEP_TIMER, Bundle.EMPTY),
       Bundle.EMPTY,
     )
+  }
+
+  fun setSpeed(speed: Float) {
+    val controller = controller ?: return
+    val value = PlaybackSpeedOptions.sanitize(speed)
+    val args =
+      Bundle().apply {
+        putFloat(PlaybackCommands.KEY_SPEED, value)
+      }
+    controller.sendCustomCommand(
+      SessionCommand(PlaybackCommands.SET_PLAYBACK_SPEED, Bundle.EMPTY),
+      args,
+    )
+    _playback.value = _playback.value.copy(speed = value)
   }
 
   fun consumeError() {
