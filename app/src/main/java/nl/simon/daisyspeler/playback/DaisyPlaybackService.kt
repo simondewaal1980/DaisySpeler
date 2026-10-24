@@ -57,6 +57,7 @@ class DaisyPlaybackService : MediaSessionService() {
   private var loadedBook: DaisyBook? = null
   private var loadedBookId: String? = null
   private var loadJob: Job? = null
+  private var sleepFadeJob: Job? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -143,16 +144,49 @@ class DaisyPlaybackService : MediaSessionService() {
           if (timer.bookId != loadedBookId) {
             sleepTimerManager.cancel()
           } else if (sleepTimerManager.isExpired()) {
-            if (player.isPlaying) {
-              recordStop("SLEEP_TIMER")
-              player.pause()
-            }
-            sleepTimerManager.cancel()
+            fadeOutForSleepTimer()
           }
         }
         delay(1_000)
       }
     }
+  }
+
+  /**
+   * Fades the volume out over a few seconds before pausing, so the audio does not stop
+   * abruptly when the sleep timer expires.
+   */
+  private fun fadeOutForSleepTimer() {
+    sleepTimerManager.cancel()
+    if (!player.isPlaying) return
+
+    sleepFadeJob?.cancel()
+    sleepFadeJob =
+      serviceScope.launch {
+        val steps = (SLEEP_FADE_DURATION_MS / SLEEP_FADE_STEP_MS).toInt()
+        try {
+          for (step in 1..steps) {
+            if (!player.isPlaying) return@launch
+            player.volume = 1f - step.toFloat() / steps
+            delay(SLEEP_FADE_STEP_MS)
+          }
+          if (player.isPlaying) {
+            recordStop("SLEEP_TIMER")
+            player.pause()
+          }
+        } finally {
+          sleepFadeJob = null
+          // Restore the volume for the next playback session, unless the fade was
+          // interrupted by a pause (the player listener restores it after pausing).
+          if (isActive && player.isPlaying) player.volume = 1f
+        }
+      }
+  }
+
+  private fun cancelSleepFade() {
+    sleepFadeJob?.cancel()
+    sleepFadeJob = null
+    if (!player.isPlaying) player.volume = 1f
   }
 
   private fun startPositionSaver() {
@@ -288,11 +322,13 @@ class DaisyPlaybackService : MediaSessionService() {
   }
 
   private fun startPlayback() {
+    cancelSleepFade()
     recordStart()
     player.play()
   }
 
   private fun pausePlayback(reason: String = "PAUSE") {
+    cancelSleepFade()
     recordStop(reason)
     player.pause()
   }
@@ -309,7 +345,11 @@ class DaisyPlaybackService : MediaSessionService() {
       override fun onIsPlayingChanged(isPlaying: Boolean) {
         // Bookmarks are only created by explicit play/pause actions (button, media key or
         // sleep timer). Save the resume position here, without creating a bookmark.
-        if (!isPlaying) saveLastPosition()
+        if (!isPlaying) {
+          saveLastPosition()
+          // Undo a (partially) faded out volume after the sleep timer.
+          player.volume = 1f
+        }
       }
 
       override fun onPlaybackStateChanged(playbackState: Int) {
@@ -400,6 +440,7 @@ class DaisyPlaybackService : MediaSessionService() {
       // Play/pause from external controllers (for example the media notification) should
       // create a bookmark too. Previous/next commands intentionally do not.
       if (playerCommand == Player.COMMAND_PLAY_PAUSE) {
+        cancelSleepFade()
         if (player.isPlaying) {
           recordStop("PAUSE")
         } else {
@@ -474,5 +515,7 @@ class DaisyPlaybackService : MediaSessionService() {
     const val TAG = "DaisyPlayback"
     const val PREFS_NAME = "daisy_playback"
     const val KEY_LAST_BOOK_ID = "last_book_id"
+    const val SLEEP_FADE_DURATION_MS = 3_000L
+    const val SLEEP_FADE_STEP_MS = 100L
   }
 }
