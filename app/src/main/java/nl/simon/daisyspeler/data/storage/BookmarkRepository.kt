@@ -53,6 +53,11 @@ class BookmarkRepository(file: File) {
     persist(_sessions.value.filterNot { it.bookId == bookId && it.id == sessionId })
   }
 
+  @Synchronized
+  fun removeSessions(bookId: String) {
+    persist(_sessions.value.filterNot { it.bookId == bookId })
+  }
+
   fun sessionsForBook(bookId: String): List<BookmarkSession> =
     _sessions.value.filter { it.bookId == bookId }.sortedByDescending { it.start.createdAtEpochMs }
 

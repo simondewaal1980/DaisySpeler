@@ -57,6 +57,28 @@ class BookmarkRepositoryTest {
   }
 
   @Test
+  fun `removes all sessions of one book and keeps other books`() {
+    val file = Files.createTempDirectory("bookmarks4").resolve("bookmarks.json").toFile()
+    val repository = BookmarkRepository(file)
+    repository.recordStart("book", BookPosition("a.mp3", 100L, 100L, null), now = 1L)
+    repository.recordStop(
+      "book",
+      BookPosition("a.mp3", 200L, 200L, null),
+      reason = "PAUSE",
+      now = 2L,
+    )
+    repository.recordStart("book", BookPosition("a.mp3", 300L, 300L, null), now = 3L)
+    repository.recordStart("other", BookPosition("b.mp3", 400L, 400L, null), now = 4L)
+
+    repository.removeSessions("book")
+
+    assertEquals(0, repository.sessionsForBook("book").size)
+    assertEquals(1, repository.sessionsForBook("other").size)
+    assertEquals(0, BookmarkRepository(file).sessionsForBook("book").size)
+    assertEquals(1, BookmarkRepository(file).sessionsForBook("other").size)
+  }
+
+  @Test
   fun `does not create orphan stop bookmarks`() {
     val file = Files.createTempDirectory("bookmarks2").resolve("bookmarks.json").toFile()
     val repository = BookmarkRepository(file)

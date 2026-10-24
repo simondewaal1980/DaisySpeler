@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -206,6 +207,7 @@ fun PlayerScreen(
           sheet = null
         },
         onDelete = viewModel::removeBookmark,
+        onDeleteAll = viewModel::removeAllBookmarks,
       )
     }
     PlayerSheet.SLEEP -> {
@@ -508,18 +510,34 @@ private fun BookmarksSheet(
   onDismiss: () -> Unit,
   onSelect: (BookmarkPoint) -> Unit,
   onDelete: (String) -> Unit,
+  onDeleteAll: () -> Unit,
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var pendingDelete by remember { mutableStateOf<BookmarkSession?>(null) }
+  var pendingDeleteAll by remember { mutableStateOf(false) }
   ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          "Automatische bookmarks",
+          style = MaterialTheme.typography.titleLarge,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier.weight(1f),
+        )
+        if (sessions.isNotEmpty()) {
+          TextButton(onClick = { pendingDeleteAll = true }) {
+            Icon(
+              Icons.Default.DeleteSweep,
+              contentDescription = null,
+              modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("Alles wissen")
+          }
+        }
+      }
       Text(
-        "Automatische bookmarks",
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-      )
-      Text(
-        "Bij start en stop van het afspelen wordt automatisch een markering gemaakt.",
+        "Bij de play/pause-knop en de slaaptimer wordt automatisch een markering gemaakt.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -606,6 +624,32 @@ private fun BookmarksSheet(
       },
       dismissButton = {
         TextButton(onClick = { pendingDelete = null }) { Text("Annuleren") }
+      },
+    )
+  }
+
+  if (pendingDeleteAll) {
+    AlertDialog(
+      onDismissRequest = { pendingDeleteAll = false },
+      title = { Text("Alle bookmarks verwijderen?") },
+      text = {
+        Text(
+          "Alle ${sessions.size} bookmarks van dit boek worden verwijderd. " +
+            "Dit kan niet ongedaan worden gemaakt."
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            onDeleteAll()
+            pendingDeleteAll = false
+          }
+        ) {
+          Text("Alles verwijderen")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { pendingDeleteAll = false }) { Text("Annuleren") }
       },
     )
   }

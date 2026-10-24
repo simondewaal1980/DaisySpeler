@@ -57,7 +57,6 @@ class DaisyPlaybackService : MediaSessionService() {
   private var loadedBook: DaisyBook? = null
   private var loadedBookId: String? = null
   private var loadJob: Job? = null
-  private var pendingStopReason: String? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -145,7 +144,7 @@ class DaisyPlaybackService : MediaSessionService() {
             sleepTimerManager.cancel()
           } else if (sleepTimerManager.isExpired()) {
             if (player.isPlaying) {
-              pendingStopReason = "SLEEP_TIMER"
+              recordStop("SLEEP_TIMER")
               player.pause()
             }
             sleepTimerManager.cancel()
@@ -196,7 +195,10 @@ class DaisyPlaybackService : MediaSessionService() {
                 }
               }
               updateSessionIntent()
-              if (autoPlay) player.play()
+              if (autoPlay) {
+                recordStart()
+                player.play()
+              }
             }
           }
           .onFailure {
@@ -276,13 +278,23 @@ class DaisyPlaybackService : MediaSessionService() {
 
   private fun togglePlayback() {
     if (player.isPlaying) {
-      player.pause()
+      pausePlayback()
     } else {
       if (player.playbackState == Player.STATE_ENDED) {
         player.seekTo(0, 0L)
       }
-      player.play()
+      startPlayback()
     }
+  }
+
+  private fun startPlayback() {
+    recordStart()
+    player.play()
+  }
+
+  private fun pausePlayback(reason: String = "PAUSE") {
+    recordStop(reason)
+    player.pause()
   }
 
   private fun jumpHeading(forward: Boolean) {
@@ -295,18 +307,13 @@ class DaisyPlaybackService : MediaSessionService() {
   private val playerListener =
     object : Player.Listener {
       override fun onIsPlayingChanged(isPlaying: Boolean) {
-        if (isPlaying) {
-          recordStart()
-        } else {
-          val reason = pendingStopReason ?: "PAUSE"
-          pendingStopReason = null
-          recordStop(reason)
-        }
+        // Bookmarks are only created by explicit play/pause actions (button, media key or
+        // sleep timer). Save the resume position here, without creating a bookmark.
+        if (!isPlaying) saveLastPosition()
       }
 
       override fun onPlaybackStateChanged(playbackState: Int) {
         if (playbackState == Player.STATE_ENDED) {
-          pendingStopReason = "END"
           recordStop("END")
           saveLastPosition()
           sleepTimerManager.cancel()
@@ -324,7 +331,6 @@ class DaisyPlaybackService : MediaSessionService() {
 
       override fun onPlayerError(error: PlaybackException) {
         Log.e(TAG, "Playback error", error)
-        pendingStopReason = "ERROR"
         recordStop("ERROR")
       }
     }
@@ -338,6 +344,8 @@ class DaisyPlaybackService : MediaSessionService() {
         MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
           .buildUpon()
           .add(SessionCommand(PlaybackCommands.LOAD_BOOK, Bundle.EMPTY))
+          .add(SessionCommand(PlaybackCommands.START_PLAYBACK, Bundle.EMPTY))
+          .add(SessionCommand(PlaybackCommands.PAUSE_PLAYBACK, Bundle.EMPTY))
           .add(SessionCommand(PlaybackCommands.SET_SLEEP_TIMER, Bundle.EMPTY))
           .add(SessionCommand(PlaybackCommands.CANCEL_SLEEP_TIMER, Bundle.EMPTY))
           .build()
@@ -374,13 +382,31 @@ class DaisyPlaybackService : MediaSessionService() {
           KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> jumpHeading(forward = true)
           KeyEvent.KEYCODE_MEDIA_PREVIOUS,
           KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD -> jumpHeading(forward = false)
-          KeyEvent.KEYCODE_MEDIA_PLAY -> if (!player.isPlaying) player.play()
+          KeyEvent.KEYCODE_MEDIA_PLAY -> if (!player.isPlaying) startPlayback()
           KeyEvent.KEYCODE_MEDIA_PAUSE,
-          KeyEvent.KEYCODE_MEDIA_STOP -> if (player.isPlaying) player.pause()
+          KeyEvent.KEYCODE_MEDIA_STOP -> if (player.isPlaying) pausePlayback()
           KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> togglePlayback()
         }
       }
       return true
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onPlayerCommandRequest(
+      session: MediaSession,
+      controller: MediaSession.ControllerInfo,
+      playerCommand: Int,
+    ): Int {
+      // Play/pause from external controllers (for example the media notification) should
+      // create a bookmark too. Previous/next commands intentionally do not.
+      if (playerCommand == Player.COMMAND_PLAY_PAUSE) {
+        if (player.isPlaying) {
+          recordStop("PAUSE")
+        } else {
+          recordStart()
+        }
+      }
+      return SessionResult.RESULT_SUCCESS
     }
 
     override fun onPlaybackResumption(
@@ -429,6 +455,8 @@ class DaisyPlaybackService : MediaSessionService() {
         PlaybackCommands.LOAD_BOOK -> {
           args.getString(PlaybackCommands.KEY_BOOK_ID)?.let(::loadBook)
         }
+        PlaybackCommands.START_PLAYBACK -> startPlayback()
+        PlaybackCommands.PAUSE_PLAYBACK -> pausePlayback()
         PlaybackCommands.SET_SLEEP_TIMER -> {
           val bookId = args.getString(PlaybackCommands.KEY_BOOK_ID)
           val duration = args.getLong(PlaybackCommands.KEY_DURATION_MS, 0L)

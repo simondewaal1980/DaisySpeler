@@ -178,14 +178,20 @@ class PlayerViewModel(
   fun togglePlay() {
     val controller = controller ?: return
     if (controller.isPlaying) {
-      controller.pause()
+      controller.sendCustomCommand(
+        SessionCommand(PlaybackCommands.PAUSE_PLAYBACK, Bundle.EMPTY),
+        Bundle.EMPTY,
+      )
     } else {
       if (controller.playbackState == Player.STATE_ENDED ||
         (book.value?.let { controller.currentPosition >= it.totalDurationMs - 1_000 } == true)
       ) {
         seekGlobal(0L)
       }
-      controller.play()
+      controller.sendCustomCommand(
+        SessionCommand(PlaybackCommands.START_PLAYBACK, Bundle.EMPTY),
+        Bundle.EMPTY,
+      )
     }
   }
 
@@ -208,6 +214,10 @@ class PlayerViewModel(
 
   fun removeBookmark(sessionId: String) {
     container.bookmarkRepository.removeSession(bookId, sessionId)
+  }
+
+  fun removeAllBookmarks() {
+    container.bookmarkRepository.removeSessions(bookId)
   }
 
   fun seekToBookmark(point: BookmarkPoint) {
