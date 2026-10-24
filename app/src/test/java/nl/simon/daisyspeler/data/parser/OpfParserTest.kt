@@ -2,6 +2,7 @@ package nl.simon.daisyspeler.data.parser
 
 import nl.simon.daisyspeler.testutil.MemoryBookSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class OpfParserTest {
@@ -64,5 +65,56 @@ class OpfParserTest {
     assertEquals(0L, book.toc.first().globalMs)
     assertEquals("Eerste", book.toc[1].label)
     assertEquals(1_000L, book.toc[1].globalMs)
+  }
+
+  @Test
+  fun `finds cover image declared in opf metadata`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/book.opf" to
+            """
+            <package>
+              <metadata>
+                <meta name="cover" content="cover-image"/>
+              </metadata>
+              <manifest>
+                <item id="cover-image" href="images/omslag.jpg" media-type="image/jpeg"/>
+                <item id="ncc" href="ncc.html" media-type="application/x-dtbncx+xml"/>
+              </manifest>
+            </package>
+            """.trimIndent(),
+          "book/ncc.html" to "<html><body></body></html>",
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertNotNull(data)
+    assertEquals("book/images/omslag.jpg", data?.coverPath)
+  }
+
+  @Test
+  fun `finds cover image declared with properties`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/book.opf" to
+            """
+            <package>
+              <metadata/>
+              <manifest>
+                <item id="img" href="cover.png" media-type="image/png" properties="cover-image"/>
+                <item id="ncc" href="ncc.html" media-type="application/x-dtbncx+xml"/>
+              </manifest>
+            </package>
+            """.trimIndent(),
+          "book/ncc.html" to "<html><body></body></html>",
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertEquals("book/cover.png", data?.coverPath)
   }
 }

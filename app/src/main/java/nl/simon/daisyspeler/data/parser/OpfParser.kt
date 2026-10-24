@@ -9,6 +9,14 @@ data class OpfData(
   val language: String?,
   val smilSpine: List<String>,
   val nccPath: String?,
+  val coverPath: String? = null,
+)
+
+private data class OpfManifestItem(
+  val id: String,
+  val path: String,
+  val mediaType: String,
+  val properties: String,
 )
 
 object OpfParser {
@@ -29,6 +37,17 @@ object OpfParser {
         return null
       }
 
+      fun attribute(collection: String, name: String, valueAttribute: String): String? {
+        val nodes = document.getElementsByTagName(collection)
+        for (i in 0 until nodes.length) {
+          val element = nodes.item(i) as? Element ?: continue
+          if (!element.getAttribute("name").equals(name, ignoreCase = true)) continue
+          val value = element.getAttribute(valueAttribute).trim()
+          if (value.isNotEmpty()) return value
+        }
+        return null
+      }
+
       val manifestItems =
         document.getElementsByTagName("item").let { nodes ->
           buildList {
@@ -36,19 +55,20 @@ object OpfParser {
               val element = nodes.item(i) as? Element ?: continue
               val href = element.getAttribute("href").takeIf { it.isNotBlank() } ?: continue
               add(
-                Triple(
-                  element.getAttribute("id"),
-                  PathUtils.join(baseDir, href),
-                  element.getAttribute("media-type").lowercase(),
+                OpfManifestItem(
+                  id = element.getAttribute("id"),
+                  path = PathUtils.join(baseDir, href),
+                  mediaType = element.getAttribute("media-type").lowercase(),
+                  properties = element.getAttribute("properties").lowercase(),
                 )
               )
             }
           }
         }
 
-      val byId = manifestItems.associateBy { it.first }
+      val byId = manifestItems.associateBy { it.id }
       val smilItems = manifestItems.filter {
-        it.third.contains("smil") || PathUtils.extension(it.second) == "smil"
+        it.mediaType.contains("smil") || PathUtils.extension(it.path) == "smil"
       }
       val spinePaths =
         document.getElementsByTagName("itemref").let { nodes ->
@@ -56,7 +76,7 @@ object OpfParser {
             for (i in 0 until nodes.length) {
               val element = nodes.item(i) as? Element ?: continue
               val idRef = element.getAttribute("idref")
-              val href = byId[idRef]?.second
+              val href = byId[idRef]?.path
               if (href != null) {
                 add(href)
               }
@@ -66,15 +86,46 @@ object OpfParser {
 
       val nccPath =
         manifestItems.firstOrNull {
-          it.third.contains("dtbncx") || PathUtils.fileName(it.second).equals("ncc.html", true)
-        }?.second
+          it.mediaType.contains("dtbncx") || PathUtils.fileName(it.path).equals("ncc.html", true)
+        }?.path
+
+      val coverMeta = attribute("meta", "cover", "content")
+      val guideCover =
+        document.getElementsByTagName("reference").let { nodes ->
+          (0 until nodes.length).firstNotNullOfOrNull { index ->
+            val element = nodes.item(index) as? Element ?: return@firstNotNullOfOrNull null
+            if (!element.getAttribute("type").equals("cover", ignoreCase = true)) {
+              return@firstNotNullOfOrNull null
+            }
+            element.getAttribute("href").takeIf { it.isNotBlank() }
+          }
+        }
+
+      val coverPath =
+        coverMeta?.let { value ->
+          byId[value]?.path
+            ?: PathUtils.resolveHref(baseDir, value)?.first
+            ?: PathUtils.join(baseDir, value)
+        }?.takeIf(ImageFiles::isImage)
+          ?: manifestItems.firstOrNull {
+            it.properties.split(' ', '\t').any { property -> property == "cover-image" } &&
+              ImageFiles.isImage(it.path)
+          }?.path
+          ?: guideCover?.let { PathUtils.resolveHref(baseDir, it)?.first }
+            ?.takeIf(ImageFiles::isImage)
+          ?: manifestItems.firstOrNull {
+            it.mediaType.startsWith("image/") &&
+              ImageFiles.isImage(it.path) &&
+              ImageFiles.looksLikeCover(it.path)
+          }?.path
 
       OpfData(
         title = firstText("dc:title", "title"),
         author = firstText("dc:creator", "creator"),
         language = firstText("dc:language", "language"),
-        smilSpine = (spinePaths + smilItems.map { it.second }).distinct(),
+        smilSpine = (spinePaths + smilItems.map { it.path }).distinct(),
         nccPath = nccPath,
+        coverPath = coverPath,
       )
     }.getOrNull()
   }

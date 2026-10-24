@@ -47,6 +47,9 @@ class PlayerViewModel(
   private val _book = MutableStateFlow<DaisyBook?>(null)
   val book: StateFlow<DaisyBook?> = _book.asStateFlow()
 
+  private val _coverPath = MutableStateFlow<String?>(null)
+  val coverPath: StateFlow<String?> = _coverPath.asStateFlow()
+
   private val _playback = MutableStateFlow(PlaybackUiState())
   val playback: StateFlow<PlaybackUiState> = _playback.asStateFlow()
 
@@ -80,8 +83,19 @@ class PlayerViewModel(
     }
 
   init {
+    _coverPath.value = container.libraryRepository.get(bookId)?.coverPath
     loadBook()
+    ensureCover()
     connectController()
+  }
+
+  private fun ensureCover() {
+    val entry = container.libraryRepository.get(bookId) ?: return
+    if (entry.coverPath != null) return
+    viewModelScope.launch {
+      runCatching { container.bookRepository.ensureCover(entry) }
+        .onSuccess { path -> if (path != null) _coverPath.value = path }
+    }
   }
 
   private fun loadBook() {

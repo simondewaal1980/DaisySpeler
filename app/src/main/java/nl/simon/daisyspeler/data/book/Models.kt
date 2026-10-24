@@ -50,6 +50,8 @@ data class DaisyBook(
   val segments: List<AudioSegment>,
   val toc: List<NavPoint>,
   val warnings: List<String> = emptyList(),
+  /** Path of the cover image inside the book, relative to the book root. */
+  val coverPath: String? = null,
 ) {
   fun segmentAtGlobal(positionMs: Long): Pair<AudioSegment, Long>? {
     val safe = positionMs.coerceAtLeast(0L)

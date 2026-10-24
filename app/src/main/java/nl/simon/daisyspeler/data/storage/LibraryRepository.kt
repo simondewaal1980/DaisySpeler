@@ -22,10 +22,22 @@ class LibraryRepository(file: File) {
       entry.copy(
         addedAtEpochMs = previous?.addedAtEpochMs ?: entry.addedAtEpochMs,
         lastPosition = previous?.lastPosition,
+        coverPath = entry.coverPath ?: previous?.coverPath,
       )
     val updated = current.filterNot { it.id == entry.id } + merged
     persist(updated)
     return merged
+  }
+
+  @Synchronized
+  fun updateCover(bookId: String, coverPath: String?) {
+    if (coverPath.isNullOrBlank()) return
+    val current = _entries.value
+    val index = current.indexOfFirst { it.id == bookId }
+    if (index < 0 || current[index].coverPath == coverPath) return
+    val updated = current.toMutableList()
+    updated[index] = updated[index].copy(coverPath = coverPath)
+    persist(updated)
   }
 
   @Synchronized

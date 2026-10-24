@@ -14,6 +14,10 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
   audioclips worden samengevoegd tot een doorlopende tijdlijn.
 - Inhoudsopgave met koppen, pagina's, zijbalken en notities. Standaard worden
   koppen en pagina's getoond; er kan naar alle navigatiepunten worden gefilterd.
+- Boekomslagen: als een DAISY-boek een omslagafbeelding heeft (via `ncc.html`
+  of `book.opf`, of een bestand met een naam als `cover.jpg` of `omslag.png`),
+  wordt die getoond in de bibliotheek en op het speler-scherm. De afbeelding
+  wordt lokaal in de app opgeslagen, zodat een map-import blijft werken.
 - Vorige/volgende kop, zoeken met de schuifbalk, −15 seconden en +30 seconden.
 - Automatische bookmarks: elke keer dat het afspelen start of stopt wordt een
   start/stop-paar opgeslagen. De stopreden wordt bewaard (pauze, slaaptimer,
@@ -79,6 +83,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
   bestand of de map van het afzonderlijke boek.
 - Geen handmatige bookmarks; bookmarks worden automatisch bij start en stop
   gemaakt.
+- Alleen omslagafbeeldingen als los bestand in het boek. Hoezen die alleen in
+  ID3-tags van de MP3-bestanden zitten, worden niet gelezen.
 
 ## Techniek
 
@@ -96,6 +102,8 @@ De bronbestanden en 512px-previews staan in `docs/icon/`.
 De belangrijkste code staat in:
 
 - `app/src/main/java/nl/simon/daisyspeler/data/parser/` — DAISY-parser
+- `app/src/main/java/nl/simon/daisyspeler/ui/components/` — gedeelde UI-onderdelen
+  zoals de omslagafbeelding
 - `app/src/main/java/nl/simon/daisyspeler/data/importer/` — veilige ZIP-uitpak
 - `app/src/main/java/nl/simon/daisyspeler/playback/` — afspelen, bookmarks en
   slaaptimer

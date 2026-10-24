@@ -24,6 +24,8 @@ data class LibraryEntry(
   val lastPosition: BookPosition? = null,
   val sourceType: LibrarySourceType = LibrarySourceType.FOLDER,
   val localDir: String? = null,
+  /** Absolute path of the cached cover image, if the book has one. */
+  val coverPath: String? = null,
 )
 
 @Serializable

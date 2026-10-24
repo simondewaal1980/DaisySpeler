@@ -71,6 +71,64 @@ class DaisyBookLoaderTest {
     assertEquals(1, book.segments.size)
   }
 
+  @Test
+  fun `uses image referenced from ncc as cover`() {
+    val source =
+      MemoryBookSource(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head><meta name="dc:title" content="Met omslag"/></head><body>
+              <div class="cover"><img src="images/cover.jpg" alt="Omslag"/></div>
+              <h1><a href="s1.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent().toByteArray(),
+          "book/s1.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a1.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent().toByteArray(),
+          "book/a1.mp3" to ByteArray(0),
+          "book/images/cover.jpg" to byteArrayOf(1, 2, 3, 4),
+        )
+      )
+
+    val book = DaisyBookLoader().load(source)
+
+    assertEquals("book/images/cover.jpg", book.coverPath)
+    assertEquals("book/images/cover.jpg", DaisyBookLoader().findCover(source))
+  }
+
+  @Test
+  fun `falls back to a file named like a cover`() {
+    val book =
+      DaisyBookLoader().load(
+        MemoryBookSource(
+          mapOf(
+            "book/ncc.html" to
+              """
+              <html><head><meta name="dc:title" content="Zonder plaatje"/></head><body>
+                <h1><a href="s1.smil#p1">Hoofdstuk</a></h1>
+              </body></html>
+              """.trimIndent().toByteArray(),
+            "book/s1.smil" to
+              """
+              <smil><body><par>
+                <text src="ncc.html#p1" id="p1"/>
+                <audio src="a1.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+              </par></body></smil>
+              """.trimIndent().toByteArray(),
+            "book/a1.mp3" to ByteArray(0),
+            "book/voorblad.png" to byteArrayOf(1, 2, 3),
+          )
+        )
+      )
+
+    assertEquals("book/voorblad.png", book.coverPath)
+  }
+
   private fun sampleBook(): MemoryBookSource =
     MemoryBookSource.fromText(
       mapOf(

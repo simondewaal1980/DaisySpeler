@@ -23,6 +23,7 @@ data class LibraryUiState(
 
 class LibraryViewModel(private val container: AppContainer) : ViewModel() {
   private val local = MutableStateFlow(LibraryUiState())
+  private val coverRequests = mutableSetOf<String>()
 
   val uiState: StateFlow<LibraryUiState> =
     combine(local, container.libraryRepository.entries) { state, entries ->
@@ -54,6 +55,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
               addedAtEpochMs = System.currentTimeMillis(),
               sourceType = if (isZip) LibrarySourceType.ZIP else LibrarySourceType.FOLDER,
               localDir = loaded.localDir,
+              coverPath = loaded.coverPath,
             )
           )
         }
@@ -92,5 +94,14 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
 
   fun clearError() {
     local.update { it.copy(error = null) }
+  }
+
+  /** Backfills the cover of a book that was imported before cover support existed. */
+  fun ensureCover(entry: LibraryEntry) {
+    if (entry.coverPath != null || !coverRequests.add(entry.id)) return
+    viewModelScope.launch {
+      runCatching { container.bookRepository.ensureCover(entry) }
+      coverRequests.remove(entry.id)
+    }
   }
 }

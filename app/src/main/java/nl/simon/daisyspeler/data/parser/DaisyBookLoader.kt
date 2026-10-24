@@ -21,12 +21,7 @@ class DaisyBookLoader {
       byLowerPath[PathUtils.normalize(path).lowercase()]
 
     val nccFile =
-      allFiles
-        .filter {
-          val name = PathUtils.fileName(it.path).lowercase()
-          name == "ncc.html" || name == "ncc.htm"
-        }
-        .minByOrNull { PathUtils.normalize(it.path).count { char -> char == '/' } }
+      findNccFile(allFiles)
         ?: throw DaisyParseException(
           "Geen ncc.html gevonden. Kies de map met de uitgepakte DAISY 2.02-bestanden."
         )
@@ -34,13 +29,7 @@ class DaisyBookLoader {
     val ncc = NccParser.parse(source, nccFile.path)
     warnings += ncc.warnings
 
-    val opfFile =
-      allFiles
-        .filter { PathUtils.extension(it.path) == "opf" }
-        .minByOrNull {
-          val sameDir = PathUtils.parent(it.path).equals(PathUtils.parent(nccFile.path), true)
-          (if (sameDir) 0 else 1_000) + PathUtils.normalize(it.path).count { char -> char == '/' }
-        }
+    val opfFile = findOpfFile(allFiles, nccFile.path)
     val opf = opfFile?.let { OpfParser.parse(source, it.path) }
     opf?.let { data ->
       if (data.nccPath != null && resolveFile(data.nccPath)?.path != nccFile.path) {
@@ -178,7 +167,97 @@ class DaisyBookLoader {
       segments = finalSegments,
       toc = toc.sortedBy { it.globalMs },
       warnings = warnings.distinct(),
+      coverPath =
+        resolveCoverPath(
+          allFiles = allFiles,
+          nccPath = nccFile.path,
+          nccCoverPath = ncc.coverPath,
+          opfCoverPath = opf?.coverPath,
+          resolveFile = ::resolveFile,
+        ),
     )
+  }
+
+  /**
+   * Finds the cover without parsing audio or SMIL files. Used to backfill covers for books that
+   * were imported before cover support existed.
+   */
+  fun findCover(source: BookSource): String? {
+    val allFiles = source.files().filterNot { it.isDirectory }
+    if (allFiles.isEmpty()) return null
+
+    val byLowerPath = allFiles.associateBy { PathUtils.normalize(it.path).lowercase() }
+    fun resolveFile(path: String): SourceFile? =
+      byLowerPath[PathUtils.normalize(path).lowercase()]
+
+    val nccFile = findNccFile(allFiles)
+    val opfFile = findOpfFile(allFiles, nccFile?.path)
+    val nccCover =
+      nccFile?.let { file ->
+        runCatching { NccParser.parse(source, file.path).coverPath }.getOrNull()
+      }
+    val opfCover =
+      opfFile?.let { file ->
+        runCatching { OpfParser.parse(source, file.path)?.coverPath }.getOrNull()
+      }
+
+    return resolveCoverPath(
+      allFiles = allFiles,
+      nccPath = nccFile?.path ?: opfFile?.path.orEmpty(),
+      nccCoverPath = nccCover,
+      opfCoverPath = opfCover,
+      resolveFile = ::resolveFile,
+    )
+  }
+
+  private fun findNccFile(allFiles: List<SourceFile>): SourceFile? =
+    allFiles
+      .filter {
+        val name = PathUtils.fileName(it.path).lowercase()
+        name == "ncc.html" || name == "ncc.htm"
+      }
+      .minByOrNull { PathUtils.normalize(it.path).count { char -> char == '/' } }
+
+  private fun findOpfFile(allFiles: List<SourceFile>, nccPath: String?): SourceFile? {
+    val nccDir = nccPath?.let(PathUtils::parent)
+    return allFiles
+      .filter { PathUtils.extension(it.path) == "opf" }
+      .minByOrNull {
+        val sameDir = nccDir != null && PathUtils.parent(it.path).equals(nccDir, true)
+        (if (sameDir) 0 else 1_000) + PathUtils.normalize(it.path).count { char -> char == '/' }
+      }
+  }
+
+  /**
+   * Prefers the cover declared in the OPF, then an image referenced from the NCC and finally a
+   * file named like a cover. Only real bitmap files are accepted.
+   */
+  private fun resolveCoverPath(
+    allFiles: List<SourceFile>,
+    nccPath: String,
+    nccCoverPath: String?,
+    opfCoverPath: String?,
+    resolveFile: (String) -> SourceFile?,
+  ): String? {
+    val declared =
+      listOfNotNull(opfCoverPath, nccCoverPath).firstNotNullOfOrNull { candidate ->
+        resolveFile(candidate)?.path?.takeIf(ImageFiles::isImage)
+      }
+    if (declared != null) return declared
+
+    val nccDir = PathUtils.parent(nccPath)
+    return allFiles
+      .asSequence()
+      .filter { !it.isDirectory && ImageFiles.isImage(it.path) && ImageFiles.looksLikeCover(it.path) }
+      .sortedWith(
+        compareBy(
+          { if (PathUtils.parent(it.path).equals(nccDir, true)) 0 else 1 },
+          { PathUtils.normalize(it.path).count { char -> char == '/' } },
+          { it.path.lowercase() },
+        )
+      )
+      .map { it.path }
+      .firstOrNull()
   }
 
   private fun resolveNavigation(

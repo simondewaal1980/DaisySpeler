@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.storage.LibraryEntry
 import nl.simon.daisyspeler.data.storage.LibrarySourceType
+import nl.simon.daisyspeler.ui.components.BookCover
 import nl.simon.daisyspeler.util.formatDuration
 
 private val ZIP_MIME_TYPES =
@@ -154,6 +155,7 @@ fun LibraryScreen(
               entry = entry,
               onOpen = { onOpenBook(entry.id) },
               onDelete = { deleteTarget = entry },
+              onEnsureCover = { viewModel.ensureCover(entry) },
             )
           }
         }
@@ -290,6 +292,7 @@ private fun BookCard(
   entry: LibraryEntry,
   onOpen: () -> Unit,
   onDelete: () -> Unit,
+  onEnsureCover: () -> Unit,
 ) {
   val lastPosition = entry.lastPosition
   val progress =
@@ -298,21 +301,26 @@ private fun BookCard(
       else 0f
     }
 
+  LaunchedEffect(entry.id, entry.coverPath) {
+    if (entry.coverPath == null) onEnsureCover()
+  }
+
   Card(
     modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
   ) {
     Column(modifier = Modifier.padding(16.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-          modifier = Modifier.size(48.dp),
-          contentAlignment = Alignment.Center,
+        BookCover(
+          coverPath = entry.coverPath,
+          contentDescription = "Omslag van ${entry.title}",
+          modifier = Modifier.width(56.dp).height(80.dp),
         ) {
           Icon(
             Icons.Default.PlayArrow,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(32.dp),
           )
         }
         Spacer(Modifier.width(12.dp))

@@ -21,6 +21,7 @@ data class NccData(
   val format: String?,
   val navItems: List<RawNavItem>,
   val warnings: List<String>,
+  val coverPath: String? = null,
 )
 
 object NccParser {
@@ -70,7 +71,36 @@ object NccParser {
       format = meta("dc:format"),
       navItems = rawItems,
       warnings = warnings,
+      coverPath = findCoverPath(document, baseDir),
     )
+  }
+
+  /**
+   * DAISY 2.02 books usually show their cover as the first image in ncc.html. Prefer an image
+   * whose name, alt text or surrounding element mentions "cover", otherwise accept the only
+   * image on the page.
+   */
+  private fun findCoverPath(document: org.jsoup.nodes.Document, baseDir: String): String? {
+    val metaCover =
+      document.selectFirst("meta[name=cover]")?.attr("content")?.trim()?.takeIf { it.isNotEmpty() }
+    if (metaCover != null) {
+      val resolved = PathUtils.resolveHref(baseDir, metaCover)?.first ?: PathUtils.join(baseDir, metaCover)
+      if (ImageFiles.isImage(resolved)) return resolved
+    }
+
+    val images = document.select("img[src]")
+    val preferred =
+      images.firstOrNull { image ->
+        val own =
+          listOf("src", "alt", "class", "id", "title").joinToString(" ") { image.attr(it) }
+        val surroundings =
+          generateSequence(image.parent()) { it.parent() }
+            .take(3)
+            .joinToString(" ") { "${it.className()} ${it.id()}" }
+        ImageFiles.looksLikeCover(own) || ImageFiles.looksLikeCover(surroundings)
+      }
+    val chosen = preferred ?: images.singleOrNull() ?: return null
+    return PathUtils.resolveHref(baseDir, chosen.attr("src"))?.first?.takeIf(ImageFiles::isImage)
   }
 
   private fun targetOf(element: Element): String? {

@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import nl.simon.daisyspeler.data.book.DaisyBook
 import nl.simon.daisyspeler.data.importer.ZipBookExtractor
 import nl.simon.daisyspeler.data.parser.DaisyBookLoader
+import nl.simon.daisyspeler.data.parser.ImageFiles
 import nl.simon.daisyspeler.data.source.BookSource
 import nl.simon.daisyspeler.data.source.FileBookSource
 import nl.simon.daisyspeler.data.source.SafBookSource
@@ -37,9 +38,12 @@ class BookRepository(
 ) {
   private val loader = DaisyBookLoader()
   private val mutex = Mutex()
+  private val coverMutex = Mutex()
   private val cache = mutableMapOf<String, DaisyBook>()
   private val sourceCache = mutableMapOf<String, BookSource>()
+  private val coverChecked = mutableSetOf<String>()
   private val booksRoot = File(context.filesDir, "books")
+  private val coversRoot = File(context.filesDir, "covers")
 
   suspend fun load(entry: LibraryEntry): DaisyBook = mutex.withLock {
     cache[entry.id]
@@ -63,7 +67,8 @@ class BookRepository(
     val book =
       cache[id]
         ?: withContext(Dispatchers.IO) { loader.load(source) }.also { cache[id] = it }
-    LoadedBook(id, source, book)
+    val coverPath = withContext(Dispatchers.IO) { cacheCover(id, book.coverPath, source) }
+    LoadedBook(id, source, book, coverPath = coverPath)
   }
 
   /**
@@ -97,7 +102,8 @@ class BookRepository(
         val source = FileBookSource(target)
         cache[id] = book
         sourceCache[id] = source
-        LoadedBook(id, source, book, target.absolutePath)
+        val coverPath = cacheCover(id, book.coverPath, source)
+        LoadedBook(id, source, book, target.absolutePath, coverPath)
       } catch (error: Throwable) {
         temp.deleteRecursively()
         cache.remove(id)
@@ -120,22 +126,102 @@ class BookRepository(
     val entry =
       libraryRepository.get(bookId)
         ?: throw IllegalStateException("Boek niet gevonden in de bibliotheek.")
-    load(entry)
-    return sourceCache[bookId]
-      ?: throw IllegalStateException("Boekbestanden zijn niet beschikbaar.")
+    return sourceForEntry(entry)
+  }
+
+  private suspend fun sourceForEntry(entry: LibraryEntry): BookSource = mutex.withLock {
+    sourceCache[entry.id]
+      ?: withContext(Dispatchers.IO) { sourceFor(entry) }.also { sourceCache[entry.id] = it }
   }
 
   fun cached(bookId: String): DaisyBook? = cache[bookId]
 
+  /**
+   * Ensures the cover of a book is available as a local file. Covers of folder imports live
+   * behind a SAF permission and may disappear, so they are copied to app-private storage. This
+   * also backfills books that were imported before cover support existed.
+   */
+  suspend fun ensureCover(entry: LibraryEntry): String? {
+    entry.coverPath?.let { path -> if (File(path).isFile) return path }
+    return coverMutex.withLock {
+      entry.coverPath?.let { path -> if (File(path).isFile) return@withLock path }
+      if (entry.id in coverChecked) return@withLock null
+
+      val source = sourceForEntry(entry)
+      val coverPath =
+        cacheCover(entry.id, withContext(Dispatchers.IO) { loader.findCover(source) }, source)
+      coverChecked += entry.id
+      if (coverPath != null) {
+        libraryRepository.updateCover(entry.id, coverPath)
+      }
+      coverPath
+    }
+  }
+
+  private fun cacheCover(bookId: String, relativePath: String?, source: BookSource): String? {
+    val coverPath = relativePath ?: return null
+    if (!ImageFiles.isImage(coverPath)) return null
+    val extension = coverPath.substringAfterLast('.', "").lowercase()
+    if (extension.isBlank()) return null
+
+    if (!coversRoot.isDirectory && !coversRoot.mkdirs()) return null
+    val target = File(coversRoot, "$bookId.$extension")
+
+    val temp = File(coversRoot, "$bookId.tmp")
+    return try {
+      source.open(coverPath).use { input ->
+        temp.outputStream().use { output ->
+          val buffer = ByteArray(COVER_BUFFER_SIZE)
+          var total = 0L
+          while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > MAX_COVER_BYTES) {
+              throw IOException("De omslagafbeelding is te groot.")
+            }
+            output.write(buffer, 0, read)
+          }
+        }
+      }
+
+      if (temp.length() == 0L) {
+        temp.delete()
+        return null
+      }
+
+      if (target.exists() && !target.delete()) {
+        temp.delete()
+        return null
+      }
+      if (!temp.renameTo(target)) {
+        temp.delete()
+        return null
+      }
+
+      // Remove covers with a different extension from an earlier import.
+      coversRoot.listFiles { file ->
+        file.name.startsWith("$bookId.") && file.name != target.name
+      }?.forEach { it.delete() }
+
+      target.absolutePath
+    } catch (_: Throwable) {
+      temp.delete()
+      null
+    }
+  }
+
   fun forget(bookId: String) {
     cache.remove(bookId)
     sourceCache.remove(bookId)
+    coverChecked.remove(bookId)
   }
 
   /**
    * Removes the extracted copy of a ZIP-imported book. Folder imports are left untouched.
    */
   fun deleteLocalFiles(entry: LibraryEntry) {
+    coversRoot.listFiles { file -> file.name.startsWith("${entry.id}.") }?.forEach { it.delete() }
     val localDir = entry.localDir ?: return
     val root = booksRoot.canonicalFile
     val target = File(localDir).canonicalFile
@@ -153,6 +239,11 @@ class BookRepository(
     }
     return SafBookSource(context, Uri.parse(entry.treeUri))
   }
+
+  private companion object {
+    const val COVER_BUFFER_SIZE = 64 * 1024
+    const val MAX_COVER_BYTES = 12L * 1024 * 1024
+  }
 }
 
 data class LoadedBook(
@@ -160,4 +251,5 @@ data class LoadedBook(
   val source: BookSource,
   val book: DaisyBook,
   val localDir: String? = null,
+  val coverPath: String? = null,
 )

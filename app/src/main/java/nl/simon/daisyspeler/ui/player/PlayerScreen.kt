@@ -79,6 +79,7 @@ import nl.simon.daisyspeler.data.storage.BookmarkPoint
 import nl.simon.daisyspeler.data.storage.BookmarkSession
 import nl.simon.daisyspeler.data.storage.SleepTimerOptions
 import nl.simon.daisyspeler.data.storage.SleepTimerState
+import nl.simon.daisyspeler.ui.components.BookCover
 import nl.simon.daisyspeler.util.formatDate
 import nl.simon.daisyspeler.util.formatDuration
 import nl.simon.daisyspeler.util.formatTimer
@@ -104,6 +105,7 @@ fun PlayerScreen(
 ) {
   val viewModel: PlayerViewModel = viewModel(key = bookId) { PlayerViewModel(container, bookId) }
   val book by viewModel.book.collectAsStateWithLifecycle()
+  val coverPath by viewModel.coverPath.collectAsStateWithLifecycle()
   val playback by viewModel.playback.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val timer by viewModel.sleepTimer.collectAsStateWithLifecycle()
@@ -170,6 +172,7 @@ fun PlayerScreen(
 
     PlayerContent(
       book = currentBook,
+      coverPath = coverPath,
       playback = playback,
       timer = timer,
       onTogglePlay = viewModel::togglePlay,
@@ -232,6 +235,7 @@ fun PlayerScreen(
 @Composable
 private fun PlayerContent(
   book: DaisyBook,
+  coverPath: String?,
   playback: PlaybackUiState,
   timer: SleepTimerState?,
   onTogglePlay: () -> Unit,
@@ -262,19 +266,35 @@ private fun PlayerContent(
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     Spacer(Modifier.height(12.dp))
-    Box(
-      modifier = Modifier
-        .size(132.dp)
-        .padding(4.dp),
-      contentAlignment = Alignment.Center,
-    ) {
-      Icon(
-        Icons.AutoMirrored.Filled.MenuBook,
-        contentDescription = null,
-        modifier = Modifier.size(96.dp),
-        tint = MaterialTheme.colorScheme.primary,
-      )
+    if (coverPath != null) {
+      BookCover(
+        coverPath = coverPath,
+        contentDescription = "Omslag van ${book.title}",
+        modifier = Modifier.width(152.dp).height(208.dp),
+      ) {
+        Icon(
+          Icons.AutoMirrored.Filled.MenuBook,
+          contentDescription = null,
+          modifier = Modifier.size(64.dp),
+          tint = MaterialTheme.colorScheme.primary,
+        )
+      }
+    } else {
+      Box(
+        modifier = Modifier
+          .size(132.dp)
+          .padding(4.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+          Icons.AutoMirrored.Filled.MenuBook,
+          contentDescription = null,
+          modifier = Modifier.size(96.dp),
+          tint = MaterialTheme.colorScheme.primary,
+        )
+      }
     }
+    Spacer(Modifier.height(12.dp))
     Text(
       book.title,
       style = MaterialTheme.typography.headlineSmall,
