@@ -102,6 +102,88 @@ class DaisyBookLoaderTest {
   }
 
   @Test
+  fun `uses the first image in ncc when multiple images have no cover hint`() {
+    val source =
+      MemoryBookSource(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head><meta name="dc:title" content="Meerdere plaatjes"/></head><body>
+              <div><img src="images/001.jpg" alt="Eerste"/></div>
+              <div class="logo"><img src="images/002.jpg" alt="Tweede"/></div>
+              <h1><a href="s1.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent().toByteArray(),
+          "book/s1.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a1.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent().toByteArray(),
+          "book/a1.mp3" to ByteArray(0),
+          "book/images/001.jpg" to byteArrayOf(1, 2, 3),
+          "book/images/002.jpg" to byteArrayOf(4, 5, 6),
+        )
+      )
+
+    assertEquals("book/images/001.jpg", DaisyBookLoader().load(source).coverPath)
+  }
+
+  @Test
+  fun `uses a single image with a neutral name when ncc has no image`() {
+    val source =
+      MemoryBookSource(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head><meta name="dc:title" content="Eén plaatje"/></head><body>
+              <h1><a href="s1.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent().toByteArray(),
+          "book/s1.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a1.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent().toByteArray(),
+          "book/a1.mp3" to ByteArray(0),
+          "book/plaatje.jpg" to byteArrayOf(1, 2, 3),
+        )
+      )
+
+    assertEquals("book/plaatje.jpg", DaisyBookLoader().load(source).coverPath)
+  }
+
+  @Test
+  fun `recognises Dutch kaft as a cover name`() {
+    val source =
+      MemoryBookSource(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head><meta name="dc:title" content="Kaft"/></head><body>
+              <h1><a href="s1.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent().toByteArray(),
+          "book/s1.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a1.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent().toByteArray(),
+          "book/a1.mp3" to ByteArray(0),
+          "book/kaft.jpg" to byteArrayOf(1, 2, 3),
+          "book/illustratie.jpg" to byteArrayOf(4, 5, 6),
+        )
+      )
+
+    assertEquals("book/kaft.jpg", DaisyBookLoader().load(source).coverPath)
+  }
+
+  @Test
   fun `falls back to a file named like a cover`() {
     val book =
       DaisyBookLoader().load(

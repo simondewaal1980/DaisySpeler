@@ -7,7 +7,8 @@ package nl.simon.daisyspeler.data.parser
 object ImageFiles {
   private val BITMAP_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp")
 
-  private val COVER_HINTS = listOf("cover", "omslag", "voorblad", "front")
+  private val COVER_HINTS =
+    listOf("cover", "omslag", "voorblad", "front", "kaft", "hoes", "voorzijde")
 
   fun isImage(path: String): Boolean = PathUtils.extension(path) in BITMAP_EXTENSIONS
 

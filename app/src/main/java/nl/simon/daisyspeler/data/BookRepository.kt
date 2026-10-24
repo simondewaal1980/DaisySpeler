@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import nl.simon.daisyspeler.data.book.DaisyBook
 import nl.simon.daisyspeler.data.importer.ZipBookExtractor
 import nl.simon.daisyspeler.data.parser.DaisyBookLoader
+import nl.simon.daisyspeler.data.parser.EmbeddedCoverExtractor
 import nl.simon.daisyspeler.data.parser.ImageFiles
 import nl.simon.daisyspeler.data.source.BookSource
 import nl.simon.daisyspeler.data.source.FileBookSource
@@ -67,7 +68,11 @@ class BookRepository(
     val book =
       cache[id]
         ?: withContext(Dispatchers.IO) { loader.load(source) }.also { cache[id] = it }
-    val coverPath = withContext(Dispatchers.IO) { cacheCover(id, book.coverPath, source) }
+    val coverPath =
+      withContext(Dispatchers.IO) {
+        cacheCover(id, book.coverPath, source)
+          ?: cacheEmbeddedCover(id, source, book.segments.map { it.sourcePath })
+      }
     LoadedBook(id, source, book, coverPath = coverPath)
   }
 
@@ -102,7 +107,9 @@ class BookRepository(
         val source = FileBookSource(target)
         cache[id] = book
         sourceCache[id] = source
-        val coverPath = cacheCover(id, book.coverPath, source)
+        val coverPath =
+          cacheCover(id, book.coverPath, source)
+            ?: cacheEmbeddedCover(id, source, book.segments.map { it.sourcePath })
         LoadedBook(id, source, book, target.absolutePath, coverPath)
       } catch (error: Throwable) {
         temp.deleteRecursively()
@@ -148,8 +155,10 @@ class BookRepository(
       if (entry.id in coverChecked) return@withLock null
 
       val source = sourceForEntry(entry)
+      val fileCover = withContext(Dispatchers.IO) { loader.findCover(source) }
       val coverPath =
-        cacheCover(entry.id, withContext(Dispatchers.IO) { loader.findCover(source) }, source)
+        cacheCover(entry.id, fileCover, source)
+          ?: cacheEmbeddedCover(entry.id, source, audioPaths(source))
       coverChecked += entry.id
       if (coverPath != null) {
         libraryRepository.updateCover(entry.id, coverPath)
@@ -163,52 +172,85 @@ class BookRepository(
     if (!ImageFiles.isImage(coverPath)) return null
     val extension = coverPath.substringAfterLast('.', "").lowercase()
     if (extension.isBlank()) return null
-
-    if (!coversRoot.isDirectory && !coversRoot.mkdirs()) return null
-    val target = File(coversRoot, "$bookId.$extension")
+    if (!ensureCoversRoot()) return null
 
     val temp = File(coversRoot, "$bookId.tmp")
     return try {
       source.open(coverPath).use { input ->
-        temp.outputStream().use { output ->
-          val buffer = ByteArray(COVER_BUFFER_SIZE)
-          var total = 0L
-          while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            total += read
-            if (total > MAX_COVER_BYTES) {
-              throw IOException("De omslagafbeelding is te groot.")
-            }
-            output.write(buffer, 0, read)
-          }
-        }
+        temp.outputStream().use { output -> copyCover(input, output) }
       }
-
-      if (temp.length() == 0L) {
-        temp.delete()
-        return null
-      }
-
-      if (target.exists() && !target.delete()) {
-        temp.delete()
-        return null
-      }
-      if (!temp.renameTo(target)) {
-        temp.delete()
-        return null
-      }
-
-      // Remove covers with a different extension from an earlier import.
-      coversRoot.listFiles { file ->
-        file.name.startsWith("$bookId.") && file.name != target.name
-      }?.forEach { it.delete() }
-
-      target.absolutePath
+      finishCover(bookId, extension, temp)
     } catch (_: Throwable) {
       temp.delete()
       null
     }
+  }
+
+  /** Falls back to artwork embedded in the audio files when the book has no image file. */
+  private fun cacheEmbeddedCover(
+    bookId: String,
+    source: BookSource,
+    audioPaths: List<String>,
+  ): String? {
+    val cover = EmbeddedCoverExtractor.find(source, audioPaths) ?: return null
+    val extension = cover.extension ?: return null
+    if (cover.bytes.isEmpty() || cover.bytes.size > MAX_COVER_BYTES) return null
+    if (!ensureCoversRoot()) return null
+
+    val temp = File(coversRoot, "$bookId.tmp")
+    return try {
+      temp.outputStream().use { it.write(cover.bytes) }
+      finishCover(bookId, extension, temp)
+    } catch (_: Throwable) {
+      temp.delete()
+      null
+    }
+  }
+
+  private fun audioPaths(source: BookSource): List<String> =
+    source.files()
+      .asSequence()
+      .filter { !it.isDirectory && EmbeddedCoverExtractor.isAudio(it.path) }
+      .map { it.path }
+      .toList()
+
+  private fun copyCover(input: java.io.InputStream, output: java.io.OutputStream) {
+    val buffer = ByteArray(COVER_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+      val read = input.read(buffer)
+      if (read < 0) break
+      total += read
+      if (total > MAX_COVER_BYTES) {
+        throw IOException("De omslagafbeelding is te groot.")
+      }
+      output.write(buffer, 0, read)
+    }
+  }
+
+  private fun ensureCoversRoot(): Boolean = coversRoot.isDirectory || coversRoot.mkdirs()
+
+  private fun finishCover(bookId: String, extension: String, temp: File): String? {
+    val target = File(coversRoot, "$bookId.$extension")
+    if (temp.length() == 0L) {
+      temp.delete()
+      return null
+    }
+    if (target.exists() && !target.delete()) {
+      temp.delete()
+      return null
+    }
+    if (!temp.renameTo(target)) {
+      temp.delete()
+      return null
+    }
+
+    // Remove covers with a different extension from an earlier import.
+    coversRoot.listFiles { file ->
+      file.name.startsWith("$bookId.") && file.name != target.name
+    }?.forEach { it.delete() }
+
+    return target.absolutePath
   }
 
   fun forget(bookId: String) {

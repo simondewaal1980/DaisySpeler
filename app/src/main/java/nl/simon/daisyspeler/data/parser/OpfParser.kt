@@ -118,6 +118,10 @@ object OpfParser {
               ImageFiles.isImage(it.path) &&
               ImageFiles.looksLikeCover(it.path)
           }?.path
+          ?: manifestItems
+            .filter { it.mediaType.startsWith("image/") && ImageFiles.isImage(it.path) }
+            .singleOrNull()
+            ?.path
 
       OpfData(
         title = firstText("dc:title", "title"),

@@ -246,9 +246,10 @@ class DaisyBookLoader {
     if (declared != null) return declared
 
     val nccDir = PathUtils.parent(nccPath)
-    return allFiles
-      .asSequence()
-      .filter { !it.isDirectory && ImageFiles.isImage(it.path) && ImageFiles.looksLikeCover(it.path) }
+    val images = allFiles.filter { !it.isDirectory && ImageFiles.isImage(it.path) }
+    val hinted = images.filter { ImageFiles.looksLikeCover(it.path) }
+    val candidates = if (hinted.isNotEmpty()) hinted else if (images.size == 1) images else emptyList()
+    return candidates
       .sortedWith(
         compareBy(
           { if (PathUtils.parent(it.path).equals(nccDir, true)) 0 else 1 },
