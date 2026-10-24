@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Backup rules for devices older than API 31.
+   Extracted ZIP books can be large and are not useful to restore without their library entry.
+-->
+<full-backup-content>
+    <exclude domain="file" path="books/" />
+</full-backup-content>

@@ -1,0 +1,59 @@
+package nl.simon.daisyspeler.data.storage
+
+import kotlinx.serialization.Serializable
+import nl.simon.daisyspeler.data.book.BookPosition
+
+@Serializable
+data class LibraryData(val entries: List<LibraryEntry> = emptyList())
+
+@Serializable
+enum class LibrarySourceType {
+  FOLDER,
+  ZIP,
+}
+
+@Serializable
+data class LibraryEntry(
+  val id: String,
+  val treeUri: String,
+  val title: String,
+  val author: String?,
+  val durationMs: Long,
+  val tocCount: Int,
+  val addedAtEpochMs: Long,
+  val lastPosition: BookPosition? = null,
+  val sourceType: LibrarySourceType = LibrarySourceType.FOLDER,
+  val localDir: String? = null,
+)
+
+@Serializable
+data class BookmarkData(val sessions: List<BookmarkSession> = emptyList())
+
+@Serializable
+data class BookmarkSession(
+  val id: String,
+  val bookId: String,
+  val start: BookmarkPoint,
+  val stop: BookmarkPoint? = null,
+)
+
+@Serializable
+data class BookmarkPoint(
+  val sourcePath: String,
+  val sourceOffsetMs: Long,
+  val globalMs: Long,
+  val label: String? = null,
+  val createdAtEpochMs: Long = 0L,
+  val reason: String? = null,
+)
+
+@Serializable
+data class SleepTimerData(val state: SleepTimerState? = null)
+
+@Serializable
+data class SleepTimerState(
+  val bookId: String,
+  val deadlineEpochMs: Long,
+  val durationMs: Long,
+  val startedAtEpochMs: Long,
+)

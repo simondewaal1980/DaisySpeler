@@ -1,0 +1,125 @@
+package nl.simon.daisyspeler.data.parser
+
+import nl.simon.daisyspeler.data.book.NavType
+import nl.simon.daisyspeler.testutil.MemoryBookSource
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.nio.charset.Charset
+
+class DaisyBookLoaderTest {
+  @Test
+  fun `loads daisy 202 without opf and resolves nested audio`() {
+    val book = DaisyBookLoader().load(sampleBook())
+
+    assertEquals("Café aan de berg", book.title)
+    assertEquals("Per Tester", book.author)
+    assertEquals(3_000L, book.totalDurationMs)
+    assertEquals(2, book.segments.size)
+    assertEquals(0L, book.segments[0].trackStartMs)
+    assertEquals(2_000L, book.segments[1].trackStartMs)
+
+    val headings = book.toc.filter { it.type == NavType.HEADING }
+    assertEquals(2, headings.size)
+    assertEquals(1, headings[0].level)
+    assertEquals(0L, headings[0].globalMs)
+    assertEquals(2, headings[1].level)
+    assertEquals(2_000L, headings[1].globalMs)
+    assertEquals(1, book.toc.count { it.type == NavType.PAGE })
+    assertEquals(1, book.toc.count { it.type == NavType.SIDEBAR })
+  }
+
+  @Test
+  fun `resolves next and previous heading targets`() {
+    val book = DaisyBookLoader().load(sampleBook())
+
+    assertEquals(2_000L, book.headingTarget(positionMs = 0L, forward = true)?.globalMs)
+    assertEquals(2_000L, book.headingTarget(positionMs = 2_000L, forward = true)?.globalMs)
+    assertEquals(0L, book.headingTarget(positionMs = 2_500L, forward = false)?.globalMs)
+    assertEquals(0L, book.headingTarget(positionMs = 0L, forward = false)?.globalMs)
+  }
+
+  @Test
+  fun `parses windows-1252 ncc`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head>
+              <meta name="dc:title" content="Café"/>
+              <meta name="dc:creator" content="Auteur"/>
+              <meta name="dc:format" content="Daisy 2.02"/>
+            </head><body>
+              <h1><a href="s.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent(),
+          "book/s.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent(),
+          "book/a.mp3" to "",
+        ),
+        charset = Charset.forName("windows-1252"),
+      )
+
+    val book = DaisyBookLoader().load(source)
+    assertEquals("Café", book.title)
+    assertEquals(1, book.segments.size)
+  }
+
+  private fun sampleBook(): MemoryBookSource =
+    MemoryBookSource.fromText(
+      mapOf(
+        "book/ncc.html" to
+          """
+          <html><head>
+            <meta name="dc:title" content="Café aan de berg"/>
+            <meta name="dc:creator" content="Per Tester"/>
+            <meta name="dc:format" content="Daisy 2.02"/>
+            <meta name="ncc:totalTime" content="00:00:03"/>
+          </head><body>
+            <h1 id="t1"><a href="s1.smil#p1">Hoofdstuk 1</a></h1>
+            <h2 id="t2"><a href="s2.smil#p2">Sectie 1.1</a></h2>
+            <span class="page-normal" id="pg1"><a href="s2.smil#p2">1</a></span>
+            <span class="sidebar" id="sb1"><a href="s1.smil#p1">Zijbalk</a></span>
+          </body></html>
+          """.trimIndent(),
+        "book/s1.smil" to
+          """
+          <smil><body><seq>
+            <par>
+              <text src="ncc.html#t1" id="p1"/>
+              <seq>
+                <audio src="a1.mp3" clip-begin="npt=0.000s" clip-end="npt=1.000s" id="au1"/>
+                <audio src="a1.mp3" clip-begin="npt=1.000s" clip-end="npt=2.000s" id="au2"/>
+              </seq>
+            </par>
+          </seq></body></smil>
+          """.trimIndent(),
+        "book/s2.smil" to
+          """
+          <smil><body><seq>
+            <par>
+              <text src="ncc.html#t2" id="p2"/>
+              <seq>
+                <audio src="a2.mp3" clip-begin="npt=0.5s" clip-end="npt=1.5s" id="au3"/>
+              </seq>
+            </par>
+          </seq></body></smil>
+          """.trimIndent(),
+        "book/master.smil" to
+          """
+          <smil><body>
+            <ref src="s1.smil"/>
+            <ref src="s2.smil"/>
+          </body></smil>
+          """.trimIndent(),
+        "book/a1.mp3" to "",
+        "book/a2.mp3" to "",
+      )
+    )
+}

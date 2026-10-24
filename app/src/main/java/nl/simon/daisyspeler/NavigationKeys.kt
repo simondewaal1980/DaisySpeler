@@ -1,0 +1,10 @@
+package nl.simon.daisyspeler
+
+import androidx.navigation3.runtime.NavKey
+import kotlinx.serialization.Serializable
+
+@Serializable data object LibraryRoute : NavKey
+
+@Serializable data object AboutRoute : NavKey
+
+@Serializable data class PlayerRoute(val bookId: String) : NavKey

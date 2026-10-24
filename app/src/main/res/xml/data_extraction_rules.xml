@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Backup and device-transfer rules for API 31 and newer.
+   Extracted ZIP books are excluded because they can be large and are local copies.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="books/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="books/" />
+    </device-transfer>
+</data-extraction-rules>

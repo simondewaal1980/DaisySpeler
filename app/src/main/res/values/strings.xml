@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">DaisySpeler</string>
+    <string name="notification_channel_name">Weergave</string>
+</resources>

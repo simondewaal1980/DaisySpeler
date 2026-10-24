@@ -1,0 +1,271 @@
+package nl.simon.daisyspeler.ui.player
+
+import android.content.ComponentName
+import android.os.Bundle
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import nl.simon.daisyspeler.AppContainer
+import nl.simon.daisyspeler.data.book.DaisyBook
+import nl.simon.daisyspeler.data.book.NavPoint
+import nl.simon.daisyspeler.data.storage.BookmarkPoint
+import nl.simon.daisyspeler.data.storage.BookmarkSession
+import nl.simon.daisyspeler.playback.DaisyPlaybackService
+import nl.simon.daisyspeler.playback.PlaybackCommands
+import kotlin.math.max
+
+data class PlaybackUiState(
+  val isPlaying: Boolean = false,
+  val isLoading: Boolean = true,
+  val globalMs: Long = 0L,
+  val durationMs: Long = 0L,
+  val heading: String? = null,
+  val page: String? = null,
+)
+
+class PlayerViewModel(
+  private val container: AppContainer,
+  private val bookId: String,
+) : ViewModel() {
+  private val _book = MutableStateFlow<DaisyBook?>(null)
+  val book: StateFlow<DaisyBook?> = _book.asStateFlow()
+
+  private val _playback = MutableStateFlow(PlaybackUiState())
+  val playback: StateFlow<PlaybackUiState> = _playback.asStateFlow()
+
+  private val _error = MutableStateFlow<String?>(null)
+  val error: StateFlow<String?> = _error.asStateFlow()
+
+  val sleepTimer = container.sleepTimerManager.state
+
+  val bookmarks: StateFlow<List<BookmarkSession>> =
+    container.bookmarkRepository.sessions
+      .map { sessions -> sessions.filter { it.bookId == bookId }.sortedByDescending { it.start.createdAtEpochMs } }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+  private var controller: MediaController? = null
+  private var controllerFuture: ListenableFuture<MediaController>? = null
+  private var tickerJob: Job? = null
+  private var loadRequested = false
+
+  private val playerListener =
+    object : Player.Listener {
+      override fun onIsPlayingChanged(isPlaying: Boolean) = updatePlaybackState()
+
+      override fun onPlaybackStateChanged(playbackState: Int) = updatePlaybackState()
+
+      override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) =
+        updatePlaybackState()
+
+      override fun onPlayerError(error: PlaybackException) {
+        _error.value = "Afspelen mislukt: ${error.message}"
+      }
+    }
+
+  init {
+    loadBook()
+    connectController()
+  }
+
+  private fun loadBook() {
+    viewModelScope.launch {
+      runCatching {
+          val book = container.bookRepository.loadById(bookId)
+          _book.value = book
+          _playback.value =
+            _playback.value.copy(durationMs = book.totalDurationMs, isLoading = true)
+          maybeRequestLoad()
+        }
+        .onFailure {
+          _error.value = it.message ?: "Boek kon niet worden geopend."
+          _playback.value = _playback.value.copy(isLoading = false)
+        }
+    }
+  }
+
+  private fun connectController() {
+    val context = container.context
+    val token =
+      SessionToken(context, ComponentName(context, DaisyPlaybackService::class.java))
+    val future = MediaController.Builder(context, token).buildAsync()
+    controllerFuture = future
+    future.addListener(
+      {
+        runCatching { future.get() }
+          .onSuccess { connected ->
+            controller = connected
+            connected.addListener(playerListener)
+            maybeRequestLoad()
+            startTicker()
+            viewModelScope.launch {
+              delay(20_000)
+              val current = controller
+              if (current != null && current.mediaItemCount == 0) {
+                _playback.value = _playback.value.copy(isLoading = false)
+                _error.value = "De speler kon het boek niet laden."
+              }
+            }
+          }
+          .onFailure { _error.value = "Kon de speler niet starten: ${it.message}" }
+      },
+      ContextCompat.getMainExecutor(context),
+    )
+  }
+
+  private fun maybeRequestLoad() {
+    val controller = controller ?: return
+    if (_book.value == null || loadRequested) return
+    loadRequested = true
+    val args =
+      Bundle().apply {
+        putString(PlaybackCommands.KEY_BOOK_ID, bookId)
+      }
+    controller.sendCustomCommand(SessionCommand(PlaybackCommands.LOAD_BOOK, Bundle.EMPTY), args)
+    updatePlaybackState()
+  }
+
+  private fun startTicker() {
+    tickerJob?.cancel()
+    tickerJob =
+      viewModelScope.launch {
+        while (isActive) {
+          updatePlaybackState()
+          delay(500)
+        }
+      }
+  }
+
+  private fun updatePlaybackState() {
+    val controller = controller ?: return
+    val book = _book.value ?: return
+    val mediaReady = controller.mediaItemCount > 0
+    val segment = book.segments.getOrNull(controller.currentMediaItemIndex)
+    val global =
+      segment?.let {
+        (it.trackStartMs + controller.currentPosition.coerceAtLeast(0L))
+          .coerceIn(0L, book.totalDurationMs)
+      } ?: 0L
+    val heading = book.headingAt(global)?.label
+    val page = book.pageAt(global)?.label
+    _playback.value =
+      PlaybackUiState(
+        isPlaying = controller.isPlaying,
+        isLoading = !mediaReady,
+        globalMs = global,
+        durationMs = book.totalDurationMs,
+        heading = heading,
+        page = page,
+      )
+  }
+
+  fun togglePlay() {
+    val controller = controller ?: return
+    if (controller.isPlaying) {
+      controller.pause()
+    } else {
+      if (controller.playbackState == Player.STATE_ENDED ||
+        (book.value?.let { controller.currentPosition >= it.totalDurationMs - 1_000 } == true)
+      ) {
+        seekGlobal(0L)
+      }
+      controller.play()
+    }
+  }
+
+  fun seekRelative(deltaMs: Long) {
+    seekGlobal(_playback.value.globalMs + deltaMs)
+  }
+
+  fun seekGlobal(positionMs: Long) {
+    val controller = controller ?: return
+    val book = _book.value ?: return
+    val target = book.segmentAtGlobal(positionMs) ?: return
+    controller.seekTo(target.first.index, target.second)
+    updatePlaybackState()
+  }
+
+  fun seekToNav(nav: NavPoint) {
+    controller?.seekTo(nav.segmentIndex, nav.offsetMs)
+    updatePlaybackState()
+  }
+
+  fun removeBookmark(sessionId: String) {
+    container.bookmarkRepository.removeSession(bookId, sessionId)
+  }
+
+  fun seekToBookmark(point: BookmarkPoint) {
+    val controller = controller ?: return
+    val book = _book.value ?: return
+    val target = book.segmentForSource(point.sourcePath, point.sourceOffsetMs)
+    if (target != null) {
+      controller.seekTo(target.first.index, target.second)
+    } else {
+      seekGlobal(point.globalMs)
+    }
+    updatePlaybackState()
+  }
+
+  fun nextHeading() {
+    jumpHeading(forward = true)
+  }
+
+  fun previousHeading() {
+    jumpHeading(forward = false)
+  }
+
+  private fun jumpHeading(forward: Boolean) {
+    val book = _book.value ?: return
+    val target = book.headingTarget(_playback.value.globalMs, forward) ?: return
+    seekToNav(target)
+  }
+
+  fun setSleepTimer(durationMs: Long) {
+    val controller = controller ?: return
+    val args =
+      Bundle().apply {
+        putString(PlaybackCommands.KEY_BOOK_ID, bookId)
+        putLong(PlaybackCommands.KEY_DURATION_MS, durationMs)
+      }
+    controller.sendCustomCommand(
+      SessionCommand(PlaybackCommands.SET_SLEEP_TIMER, Bundle.EMPTY),
+      args,
+    )
+  }
+
+  fun cancelSleepTimer() {
+    controller?.sendCustomCommand(
+      SessionCommand(PlaybackCommands.CANCEL_SLEEP_TIMER, Bundle.EMPTY),
+      Bundle.EMPTY,
+    )
+  }
+
+  fun consumeError() {
+    _error.value = null
+  }
+
+  override fun onCleared() {
+    tickerJob?.cancel()
+    controller?.removeListener(playerListener)
+    controllerFuture?.let { MediaController.releaseFuture(it) }
+    controller = null
+    controllerFuture = null
+    super.onCleared()
+  }
+}
