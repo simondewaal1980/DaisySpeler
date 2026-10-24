@@ -28,6 +28,7 @@ import nl.simon.daisyspeler.data.book.DaisyBook
 import nl.simon.daisyspeler.data.book.NavPoint
 import nl.simon.daisyspeler.data.storage.BookmarkPoint
 import nl.simon.daisyspeler.data.storage.BookmarkSession
+import nl.simon.daisyspeler.data.storage.ManualBookmark
 import nl.simon.daisyspeler.playback.DaisyPlaybackService
 import nl.simon.daisyspeler.playback.PlaybackCommands
 import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
@@ -64,6 +65,11 @@ class PlayerViewModel(
   val bookmarks: StateFlow<List<BookmarkSession>> =
     container.bookmarkRepository.sessions
       .map { sessions -> sessions.filter { it.bookId == bookId }.sortedByDescending { it.start.createdAtEpochMs } }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+  val manualBookmarks: StateFlow<List<ManualBookmark>> =
+    container.bookmarkRepository.manualBookmarks
+      .map { bookmarks -> bookmarks.filter { it.bookId == bookId }.sortedByDescending { it.point.createdAtEpochMs } }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
   private var controller: MediaController? = null
@@ -233,12 +239,28 @@ class PlayerViewModel(
     updatePlaybackState()
   }
 
+  fun addBookmark(note: String? = null): Boolean {
+    val book = _book.value ?: return false
+    val (segment, offset) = book.segmentAtGlobal(_playback.value.globalMs) ?: return false
+    val position = book.positionAt(segment.index, offset) ?: return false
+    container.bookmarkRepository.addManualBookmark(bookId, position, note)
+    return true
+  }
+
   fun removeBookmark(sessionId: String) {
     container.bookmarkRepository.removeSession(bookId, sessionId)
   }
 
   fun removeAllBookmarks() {
     container.bookmarkRepository.removeSessions(bookId)
+  }
+
+  fun removeManualBookmark(bookmarkId: String) {
+    container.bookmarkRepository.removeManualBookmark(bookId, bookmarkId)
+  }
+
+  fun removeAllManualBookmarks() {
+    container.bookmarkRepository.removeManualBookmarks(bookId)
   }
 
   fun seekToBookmark(point: BookmarkPoint) {

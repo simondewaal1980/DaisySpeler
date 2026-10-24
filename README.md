@@ -23,6 +23,9 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
   start/stop-paar opgeslagen. De stopreden wordt bewaard (pauze, slaaptimer,
   einde boek of fout). Bookmarks zijn per boek en per sessie te bekijken en aan
   te tikken om terug te springen.
+- Eigen bookmarks: met **Bookmark toevoegen** bewaar je de huidige plek, met een
+  optionele notitie. Eigen bookmarks staan in het bookmarkscherm boven de
+  automatische bookmarks en kunnen afzonderlijk worden verwijderd.
 - "Verder luisteren": de laatste positie wordt tijdens het afspelen en bij
   zoeken/pauzeren opgeslagen en na een herstart hersteld.
 - Slaaptimer in stappen van 15 minuten tot 2 uur, met aftelling. Bij het
@@ -84,8 +87,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Geen gesynchroniseerde tekstweergave; de app is gericht op audio en navigatie.
 - Eén boek per gekozen map of ZIP-bestand. Kies bij meerdere boeken steeds het
   bestand of de map van het afzonderlijke boek.
-- Geen handmatige bookmarks; bookmarks worden automatisch bij start en stop
-  gemaakt.
 - Alleen omslagafbeeldingen als los bestand in het boek. Hoezen die alleen in
   ID3-tags van de MP3-bestanden zitten, worden niet gelezen.
 

@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -47,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -61,6 +64,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,12 +76,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.book.DaisyBook
 import nl.simon.daisyspeler.data.book.NavPoint
 import nl.simon.daisyspeler.data.book.NavType
 import nl.simon.daisyspeler.data.storage.BookmarkPoint
 import nl.simon.daisyspeler.data.storage.BookmarkSession
+import nl.simon.daisyspeler.data.storage.ManualBookmark
 import nl.simon.daisyspeler.data.storage.SleepTimerOptions
 import nl.simon.daisyspeler.data.storage.SleepTimerState
 import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
@@ -112,10 +118,13 @@ fun PlayerScreen(
   val coverPath by viewModel.coverPath.collectAsStateWithLifecycle()
   val playback by viewModel.playback.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+  val manualBookmarks by viewModel.manualBookmarks.collectAsStateWithLifecycle()
   val timer by viewModel.sleepTimer.collectAsStateWithLifecycle()
   val error by viewModel.error.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
+  val scope = rememberCoroutineScope()
   var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
+  var showAddBookmark by remember { mutableStateOf(false) }
   val context = LocalContext.current
   val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
@@ -184,6 +193,7 @@ fun PlayerScreen(
       onSeekGlobal = viewModel::seekGlobal,
       onPreviousHeading = viewModel::previousHeading,
       onNextHeading = viewModel::nextHeading,
+      onAddBookmark = { showAddBookmark = true },
       onOpenToc = { sheet = PlayerSheet.TOC },
       onOpenBookmarks = { sheet = PlayerSheet.BOOKMARKS },
       onOpenSleepTimer = { sheet = PlayerSheet.SLEEP },
@@ -208,6 +218,7 @@ fun PlayerScreen(
     PlayerSheet.BOOKMARKS -> {
       BookmarksSheet(
         sessions = bookmarks,
+        manual = manualBookmarks,
         currentLabel = playback.heading,
         onDismiss = { sheet = null },
         onSelect = { point ->
@@ -216,6 +227,8 @@ fun PlayerScreen(
         },
         onDelete = viewModel::removeBookmark,
         onDeleteAll = viewModel::removeAllBookmarks,
+        onDeleteManual = viewModel::removeManualBookmark,
+        onDeleteAllManual = viewModel::removeAllManualBookmarks,
       )
     }
     PlayerSheet.SLEEP -> {
@@ -242,6 +255,23 @@ fun PlayerScreen(
     }
     null -> Unit
   }
+
+  if (showAddBookmark) {
+    AddBookmarkDialog(
+      positionMs = playback.globalMs,
+      positionLabel = playback.heading,
+      onDismiss = { showAddBookmark = false },
+      onConfirm = { note ->
+        val added = viewModel.addBookmark(note)
+        showAddBookmark = false
+        scope.launch {
+          snackbarHostState.showSnackbar(
+            if (added) "Bookmark toegevoegd" else "Bookmark kon niet worden toegevoegd"
+          )
+        }
+      },
+    )
+  }
 }
 
 @Composable
@@ -255,6 +285,7 @@ private fun PlayerContent(
   onSeekGlobal: (Long) -> Unit,
   onPreviousHeading: () -> Unit,
   onNextHeading: () -> Unit,
+  onAddBookmark: () -> Unit,
   onOpenToc: () -> Unit,
   onOpenBookmarks: () -> Unit,
   onOpenSleepTimer: () -> Unit,
@@ -422,6 +453,15 @@ private fun PlayerContent(
       Spacer(Modifier.width(6.dp))
       Text("Afspeelsnelheid ${PlaybackSpeedOptions.format(playback.speed)}")
     }
+    Spacer(Modifier.height(8.dp))
+    FilledTonalButton(
+      onClick = onAddBookmark,
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(20.dp))
+      Spacer(Modifier.width(6.dp))
+      Text("Bookmark toevoegen")
+    }
 
     Spacer(Modifier.height(16.dp))
     HorizontalDivider()
@@ -549,54 +589,97 @@ private fun TocSheet(
 @Composable
 private fun BookmarksSheet(
   sessions: List<BookmarkSession>,
+  manual: List<ManualBookmark>,
   currentLabel: String?,
   onDismiss: () -> Unit,
   onSelect: (BookmarkPoint) -> Unit,
   onDelete: (String) -> Unit,
   onDeleteAll: () -> Unit,
+  onDeleteManual: (String) -> Unit,
+  onDeleteAllManual: () -> Unit,
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var pendingDelete by remember { mutableStateOf<BookmarkSession?>(null) }
+  var pendingDeleteManual by remember { mutableStateOf<ManualBookmark?>(null) }
   var pendingDeleteAll by remember { mutableStateOf(false) }
+  var pendingDeleteAllManual by remember { mutableStateOf(false) }
   ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-          "Automatische bookmarks",
-          style = MaterialTheme.typography.titleLarge,
-          fontWeight = FontWeight.SemiBold,
-          modifier = Modifier.weight(1f),
-        )
-        if (sessions.isNotEmpty()) {
-          TextButton(onClick = { pendingDeleteAll = true }) {
-            Icon(
-              Icons.Default.DeleteSweep,
-              contentDescription = null,
-              modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text("Alles wissen")
-          }
-        }
-      }
       Text(
-        "Bij de play/pause-knop en de slaaptimer wordt automatisch een markering gemaakt.",
+        "Bookmarks",
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.SemiBold,
+      )
+      Text(
+        "Eigen bookmarks bewaar je op de huidige plek. Daarnaast maakt de speler " +
+          "automatisch een markering bij play/pause en de slaaptimer.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
       Spacer(Modifier.height(12.dp))
-      if (sessions.isEmpty()) {
-        Text(
-          "Nog geen luistersessies. Start het boek om de eerste bookmark te maken.",
-          style = MaterialTheme.typography.bodyMedium,
-          modifier = Modifier.padding(vertical = 24.dp),
-        )
-      } else {
-        LazyColumn(
-          modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
-          contentPadding = PaddingValues(bottom = 24.dp),
-        ) {
-          items(sessions, key = { it.id }) { session ->
+      LazyColumn(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+      ) {
+        item(key = "manual-header") {
+          BookmarkSectionHeader(
+            title = "Mijn bookmarks",
+            count = manual.size,
+            onDeleteAll = if (manual.isNotEmpty()) {
+              { pendingDeleteAllManual = true }
+            } else {
+              null
+            },
+          )
+        }
+        if (manual.isEmpty()) {
+          item(key = "manual-empty") {
+            Text(
+              "Nog geen eigen bookmarks. Tik in de speler op ‘Bookmark toevoegen’ " +
+                "om de huidige plek te bewaren.",
+              style = MaterialTheme.typography.bodyMedium,
+              modifier = Modifier.padding(vertical = 12.dp),
+            )
+          }
+        } else {
+          items(manual, key = { "manual-${it.id}" }) { bookmark ->
+            ManualBookmarkRow(
+              bookmark = bookmark,
+              onClick = { onSelect(bookmark.point) },
+              onDelete = { pendingDeleteManual = bookmark },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+          }
+        }
+
+        item(key = "sessions-header") {
+          Spacer(Modifier.height(16.dp))
+          BookmarkSectionHeader(
+            title = "Automatische bookmarks",
+            count = sessions.size,
+            onDeleteAll = if (sessions.isNotEmpty()) {
+              { pendingDeleteAll = true }
+            } else {
+              null
+            },
+          )
+          Text(
+            "Bij de play/pause-knop en de slaaptimer wordt automatisch een markering gemaakt.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          Spacer(Modifier.height(4.dp))
+        }
+        if (sessions.isEmpty()) {
+          item(key = "sessions-empty") {
+            Text(
+              "Nog geen luistersessies. Start het boek om de eerste bookmark te maken.",
+              style = MaterialTheme.typography.bodyMedium,
+              modifier = Modifier.padding(vertical = 12.dp),
+            )
+          }
+        } else {
+          items(sessions, key = { "session-${it.id}" }) { session ->
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
               Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -671,13 +754,39 @@ private fun BookmarksSheet(
     )
   }
 
+  pendingDeleteManual?.let { bookmark ->
+    AlertDialog(
+      onDismissRequest = { pendingDeleteManual = null },
+      title = { Text("Bookmark verwijderen?") },
+      text = {
+        Text(
+          "De bookmark van ${formatDate(bookmark.point.createdAtEpochMs)} " +
+            "wordt verwijderd."
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            onDeleteManual(bookmark.id)
+            pendingDeleteManual = null
+          }
+        ) {
+          Text("Verwijderen")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { pendingDeleteManual = null }) { Text("Annuleren") }
+      },
+    )
+  }
+
   if (pendingDeleteAll) {
     AlertDialog(
       onDismissRequest = { pendingDeleteAll = false },
-      title = { Text("Alle bookmarks verwijderen?") },
+      title = { Text("Alle automatische bookmarks verwijderen?") },
       text = {
         Text(
-          "Alle ${sessions.size} bookmarks van dit boek worden verwijderd. " +
+          "Alle ${sessions.size} automatische bookmarks van dit boek worden verwijderd. " +
             "Dit kan niet ongedaan worden gemaakt."
         )
       },
@@ -696,6 +805,159 @@ private fun BookmarksSheet(
       },
     )
   }
+
+  if (pendingDeleteAllManual) {
+    AlertDialog(
+      onDismissRequest = { pendingDeleteAllManual = false },
+      title = { Text("Alle eigen bookmarks verwijderen?") },
+      text = {
+        Text(
+          "Alle ${manual.size} eigen bookmarks van dit boek worden verwijderd. " +
+            "Dit kan niet ongedaan worden gemaakt."
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            onDeleteAllManual()
+            pendingDeleteAllManual = false
+          }
+        ) {
+          Text("Alles verwijderen")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { pendingDeleteAllManual = false }) { Text("Annuleren") }
+      },
+    )
+  }
+}
+
+@Composable
+private fun BookmarkSectionHeader(
+  title: String,
+  count: Int,
+  onDeleteAll: (() -> Unit)?,
+) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Text(
+      "$title ($count)",
+      style = MaterialTheme.typography.titleMedium,
+      fontWeight = FontWeight.SemiBold,
+      modifier = Modifier.weight(1f),
+    )
+    if (onDeleteAll != null) {
+      TextButton(onClick = onDeleteAll) {
+        Icon(
+          Icons.Default.DeleteSweep,
+          contentDescription = null,
+          modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text("Alles wissen")
+      }
+    }
+  }
+}
+
+@Composable
+private fun ManualBookmarkRow(
+  bookmark: ManualBookmark,
+  onClick: () -> Unit,
+  onDelete: () -> Unit,
+) {
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable(onClick = onClick)
+      .padding(vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+      Icons.Default.Bookmark,
+      contentDescription = null,
+      tint = MaterialTheme.colorScheme.primary,
+      modifier = Modifier.size(20.dp),
+    )
+    Spacer(Modifier.width(12.dp))
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        formatDuration(bookmark.point.globalMs),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.Medium,
+      )
+      bookmark.note?.let { note ->
+        Text(
+          note,
+          style = MaterialTheme.typography.bodySmall,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      val contextLabel = bookmark.point.label
+      if (!contextLabel.isNullOrBlank() && contextLabel != bookmark.note) {
+        Text(
+          contextLabel,
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      Text(
+        "Toegevoegd ${formatDate(bookmark.point.createdAtEpochMs)}",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    IconButton(onClick = onDelete) {
+      Icon(
+        Icons.Default.Delete,
+        contentDescription = "Bookmark verwijderen",
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.size(20.dp),
+      )
+    }
+  }
+}
+
+@Composable
+private fun AddBookmarkDialog(
+  positionMs: Long,
+  positionLabel: String?,
+  onDismiss: () -> Unit,
+  onConfirm: (String?) -> Unit,
+) {
+  var note by remember { mutableStateOf("") }
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("Bookmark toevoegen") },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+          buildString {
+            append("Op ")
+            append(formatDuration(positionMs))
+            positionLabel?.let { append(" · $it") }
+          },
+          style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+          value = note,
+          onValueChange = { note = it },
+          label = { Text("Notitie (optioneel)") },
+          maxLines = 3,
+          modifier = Modifier.fillMaxWidth(),
+        )
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = { onConfirm(note) }) { Text("Toevoegen") }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) { Text("Annuleren") }
+    },
+  )
 }
 
 @Composable

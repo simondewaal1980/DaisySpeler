@@ -4,6 +4,7 @@ import nl.simon.daisyspeler.data.book.BookPosition
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 
@@ -76,6 +77,81 @@ class BookmarkRepositoryTest {
     assertEquals(1, repository.sessionsForBook("other").size)
     assertEquals(0, BookmarkRepository(file).sessionsForBook("book").size)
     assertEquals(1, BookmarkRepository(file).sessionsForBook("other").size)
+  }
+
+  @Test
+  fun `adds a manual bookmark with a trimmed note and persists it`() {
+    val file = Files.createTempDirectory("bookmarks-manual").resolve("bookmarks.json").toFile()
+    val repository = BookmarkRepository(file)
+    val position = BookPosition("book/a.mp3", 2_000L, 3_000L, "Hoofdstuk 2")
+
+    repository.addManualBookmark("book", position, note = "  Belangrijk stuk  ", now = 100L)
+
+    val bookmark = repository.manualBookmarksForBook("book").single()
+    assertEquals("Belangrijk stuk", bookmark.note)
+    assertEquals(3_000L, bookmark.point.globalMs)
+    assertEquals("Hoofdstuk 2", bookmark.point.label)
+    assertEquals(0, repository.sessionsForBook("book").size)
+
+    val reloaded = BookmarkRepository(file).manualBookmarksForBook("book").single()
+    assertEquals("Belangrijk stuk", reloaded.note)
+    assertEquals(3_000L, reloaded.point.globalMs)
+  }
+
+  @Test
+  fun `removes manual bookmarks without touching automatic sessions`() {
+    val file = Files.createTempDirectory("bookmarks-manual2").resolve("bookmarks.json").toFile()
+    val repository = BookmarkRepository(file)
+    repository.recordStart("book", BookPosition("a.mp3", 100L, 100L, null), now = 1L)
+    repository.addManualBookmark("book", BookPosition("a.mp3", 200L, 200L, null), now = 2L)
+    repository.addManualBookmark("book", BookPosition("a.mp3", 300L, 300L, null), now = 3L)
+    repository.addManualBookmark("other", BookPosition("b.mp3", 400L, 400L, null), now = 4L)
+
+    val bookmarkId = repository.manualBookmarksForBook("book").first().id
+    repository.removeManualBookmark("other", bookmarkId)
+    assertEquals(2, repository.manualBookmarksForBook("book").size)
+
+    repository.removeManualBookmark("book", bookmarkId)
+    assertEquals(1, repository.manualBookmarksForBook("book").size)
+    assertEquals(1, repository.manualBookmarksForBook("other").size)
+    assertEquals(1, repository.sessionsForBook("book").size)
+
+    repository.removeManualBookmarks("book")
+    assertEquals(0, repository.manualBookmarksForBook("book").size)
+    assertEquals(1, repository.manualBookmarksForBook("other").size)
+    assertEquals(1, repository.sessionsForBook("book").size)
+
+    val reloaded = BookmarkRepository(file)
+    assertEquals(0, reloaded.manualBookmarksForBook("book").size)
+    assertEquals(1, reloaded.manualBookmarksForBook("other").size)
+    assertEquals(1, reloaded.sessionsForBook("book").size)
+  }
+
+  @Test
+  fun `removing a book also removes its manual bookmarks`() {
+    val file = Files.createTempDirectory("bookmarks-manual3").resolve("bookmarks.json").toFile()
+    val repository = BookmarkRepository(file)
+    repository.recordStart("book", BookPosition("a.mp3", 100L, 100L, null), now = 1L)
+    repository.addManualBookmark("book", BookPosition("a.mp3", 200L, 200L, null), now = 2L)
+    repository.addManualBookmark("other", BookPosition("b.mp3", 300L, 300L, null), now = 3L)
+
+    repository.removeBook("book")
+
+    assertEquals(0, repository.sessionsForBook("book").size)
+    assertEquals(0, repository.manualBookmarksForBook("book").size)
+    assertEquals(1, repository.manualBookmarksForBook("other").size)
+  }
+
+  @Test
+  fun `loads bookmark files from before manual bookmarks existed`() {
+    val file = Files.createTempDirectory("bookmarks-legacy").resolve("bookmarks.json").toFile()
+    file.writeText("""{"sessions":[]}""")
+
+    val repository = BookmarkRepository(file)
+
+    assertTrue(repository.manualBookmarksForBook("book").isEmpty())
+    repository.addManualBookmark("book", BookPosition("a.mp3", 100L, 100L, null), now = 1L)
+    assertEquals(1, BookmarkRepository(file).manualBookmarksForBook("book").size)
   }
 
   @Test

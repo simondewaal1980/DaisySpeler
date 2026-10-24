@@ -29,7 +29,10 @@ data class LibraryEntry(
 )
 
 @Serializable
-data class BookmarkData(val sessions: List<BookmarkSession> = emptyList())
+data class BookmarkData(
+  val sessions: List<BookmarkSession> = emptyList(),
+  val manual: List<ManualBookmark> = emptyList(),
+)
 
 @Serializable
 data class BookmarkSession(
@@ -37,6 +40,15 @@ data class BookmarkSession(
   val bookId: String,
   val start: BookmarkPoint,
   val stop: BookmarkPoint? = null,
+)
+
+/** A bookmark that the user added by hand, optionally with a short note. */
+@Serializable
+data class ManualBookmark(
+  val id: String,
+  val bookId: String,
+  val point: BookmarkPoint,
+  val note: String? = null,
 )
 
 @Serializable
