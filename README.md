@@ -23,9 +23,12 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
   start/stop-paar opgeslagen. De stopreden wordt bewaard (pauze, slaaptimer,
   einde boek of fout). Bookmarks zijn per boek en per sessie te bekijken en aan
   te tikken om terug te springen.
-- Eigen bookmarks: met **Bookmark toevoegen** bewaar je de huidige plek, met een
+- Eigen bookmarks: met **Markeren** bewaar je de huidige plek, met een
   optionele notitie. Eigen bookmarks staan in het bookmarkscherm boven de
   automatische bookmarks en kunnen afzonderlijk worden verwijderd.
+- Compact speler-scherm: omslag, titel en huidige hoofdstuk naast elkaar, met
+  daaronder de bediening en een compacte actierij voor hoofdstuknavigatie,
+  inhoud, snelheid, bookmarks en de slaaptimer.
 - "Verder luisteren": de laatste positie wordt tijdens het afspelen en bij
   zoeken/pauzeren opgeslagen en na een herstart hersteld.
 - Slaaptimer in stappen van 15 minuten tot 2 uur, met aftelling. Bij het

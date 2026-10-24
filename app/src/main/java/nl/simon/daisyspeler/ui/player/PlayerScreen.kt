@@ -68,6 +68,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -306,67 +308,64 @@ private fun PlayerContent(
   val remaining = timer?.let { (it.deadlineEpochMs - now).coerceAtLeast(0L) }
 
   Column(
-    modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+    modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    Spacer(Modifier.height(12.dp))
-    if (coverPath != null) {
+    Spacer(Modifier.height(8.dp))
+
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
       BookCover(
         coverPath = coverPath,
         contentDescription = "Omslag van ${book.title}",
-        modifier = Modifier.width(152.dp).height(208.dp),
+        modifier = Modifier.width(88.dp).height(132.dp),
       ) {
         Icon(
           Icons.AutoMirrored.Filled.MenuBook,
           contentDescription = null,
-          modifier = Modifier.size(64.dp),
+          modifier = Modifier.size(36.dp),
           tint = MaterialTheme.colorScheme.primary,
         )
       }
-    } else {
-      Box(
-        modifier = Modifier
-          .size(132.dp)
-          .padding(4.dp),
-        contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-          Icons.AutoMirrored.Filled.MenuBook,
-          contentDescription = null,
-          modifier = Modifier.size(96.dp),
-          tint = MaterialTheme.colorScheme.primary,
+      Spacer(Modifier.width(14.dp))
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          book.title,
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
         )
+        if (!book.author.isNullOrBlank()) {
+          Text(
+            book.author,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+          playback.heading ?: "Begin van het boek",
+          style = MaterialTheme.typography.bodyMedium,
+          fontWeight = FontWeight.Medium,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+        )
+        if (playback.page != null) {
+          Text(
+            "Pagina ${playback.page}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
       }
     }
+
     Spacer(Modifier.height(12.dp))
-    Text(
-      book.title,
-      style = MaterialTheme.typography.headlineSmall,
-      fontWeight = FontWeight.SemiBold,
-    )
-    if (!book.author.isNullOrBlank()) {
-      Text(
-        book.author,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
-    Spacer(Modifier.height(20.dp))
-    Text(
-      playback.heading ?: "Begin van het boek",
-      style = MaterialTheme.typography.titleMedium,
-      fontWeight = FontWeight.Medium,
-      maxLines = 2,
-      overflow = TextOverflow.Ellipsis,
-    )
-    if (playback.page != null) {
-      Text(
-        "Pagina ${playback.page}",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
-    Spacer(Modifier.height(16.dp))
 
     Slider(
       value = sliderValue,
@@ -388,7 +387,7 @@ private fun PlayerContent(
         style = MaterialTheme.typography.labelMedium,
       )
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(8.dp))
 
     Row(
       modifier = Modifier.fillMaxWidth(),
@@ -398,99 +397,110 @@ private fun PlayerContent(
       FilledTonalButton(onClick = { onSeekRelative(-15_000) }) { Text("−15") }
       FilledIconButton(
         onClick = onTogglePlay,
-        modifier = Modifier.size(76.dp),
+        modifier = Modifier.size(64.dp),
       ) {
         Icon(
           if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
           contentDescription = if (playback.isPlaying) "Pauzeren" else "Afspelen",
-          modifier = Modifier.size(40.dp),
+          modifier = Modifier.size(36.dp),
         )
       }
       FilledTonalButton(onClick = { onSeekRelative(30_000) }) { Text("+30") }
     }
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(8.dp))
     Row(
       modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      FilledTonalButton(
+      CompactAction(
+        icon = Icons.Default.SkipPrevious,
+        label = "Vorige",
         onClick = onPreviousHeading,
         modifier = Modifier.weight(1f),
-        contentPadding = PaddingValues(horizontal = 8.dp),
-      ) {
-        Icon(Icons.Default.SkipPrevious, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(4.dp))
-        Text("Vorige", maxLines = 1)
-      }
-      FilledTonalButton(
+      )
+      CompactAction(
+        icon = Icons.AutoMirrored.Filled.List,
+        label = "Inhoud",
         onClick = onOpenToc,
         modifier = Modifier.weight(1f),
-        contentPadding = PaddingValues(horizontal = 8.dp),
-      ) {
-        Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(4.dp))
-        Text("Inhoud", maxLines = 1)
-      }
-      FilledTonalButton(
+      )
+      CompactAction(
+        icon = Icons.Default.SkipNext,
+        label = "Volgende",
         onClick = onNextHeading,
         modifier = Modifier.weight(1f),
-        contentPadding = PaddingValues(horizontal = 8.dp),
-      ) {
-        Text("Volgende", maxLines = 1)
-        Spacer(Modifier.width(4.dp))
-        Icon(Icons.Default.SkipNext, contentDescription = null, modifier = Modifier.size(20.dp))
-      }
+      )
+      CompactAction(
+        icon = Icons.Default.Speed,
+        label = "Snelheid ${PlaybackSpeedOptions.format(playback.speed)}",
+        onClick = onOpenSpeed,
+        modifier = Modifier.weight(1.25f),
+      )
     }
-
-    Spacer(Modifier.height(12.dp))
-    OutlinedButton(
-      onClick = onOpenSpeed,
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(20.dp))
-      Spacer(Modifier.width(6.dp))
-      Text("Afspeelsnelheid ${PlaybackSpeedOptions.format(playback.speed)}")
-    }
-    Spacer(Modifier.height(8.dp))
-    FilledTonalButton(
-      onClick = onAddBookmark,
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(20.dp))
-      Spacer(Modifier.width(6.dp))
-      Text("Bookmark toevoegen")
-    }
-
-    Spacer(Modifier.height(16.dp))
-    HorizontalDivider()
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(4.dp))
     Row(
       modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      horizontalArrangement = Arrangement.spacedBy(4.dp),
+      verticalAlignment = Alignment.CenterVertically,
     ) {
-      OutlinedButton(
-        onClick = onOpenSleepTimer,
+      CompactAction(
+        icon = Icons.Default.BookmarkAdd,
+        label = "Markeren",
+        onClick = onAddBookmark,
         modifier = Modifier.weight(1f),
-      ) {
-        Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(
-          if (timer != null) "Slaap ${formatTimer(remaining ?: 0L)}" else "Slaaptimer",
-          maxLines = 1,
-        )
-      }
-      OutlinedButton(
+      )
+      CompactAction(
+        icon = Icons.Default.Timer,
+        label = timer?.let { "Slaap ${formatTimer(remaining ?: 0L)}" } ?: "Slaaptimer",
+        onClick = onOpenSleepTimer,
+        active = timer != null,
+        modifier = Modifier.weight(1f),
+      )
+      CompactAction(
+        icon = Icons.Default.BookmarkBorder,
+        label = "Bookmarks",
         onClick = onOpenBookmarks,
         modifier = Modifier.weight(1f),
-      ) {
-        Icon(Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Bookmarks", maxLines = 1)
-      }
+      )
     }
-    Spacer(Modifier.height(32.dp))
+    Spacer(Modifier.height(16.dp))
+  }
+}
+
+@Composable
+private fun CompactAction(
+  icon: ImageVector,
+  label: String,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  active: Boolean = false,
+) {
+  val contentColor =
+    if (active) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onSurfaceVariant
+  Column(
+    modifier = modifier
+      .clip(RoundedCornerShape(12.dp))
+      .clickable(onClick = onClick)
+      .padding(horizontal = 2.dp, vertical = 6.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Icon(
+      imageVector = icon,
+      contentDescription = null,
+      tint = contentColor,
+      modifier = Modifier.size(24.dp),
+    )
+    Spacer(Modifier.height(2.dp))
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelSmall,
+      color = contentColor,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 
@@ -635,7 +645,7 @@ private fun BookmarksSheet(
         if (manual.isEmpty()) {
           item(key = "manual-empty") {
             Text(
-              "Nog geen eigen bookmarks. Tik in de speler op ‘Bookmark toevoegen’ " +
+              "Nog geen eigen bookmarks. Tik in de speler op ‘Markeren’ " +
                 "om de huidige plek te bewaren.",
               style = MaterialTheme.typography.bodyMedium,
               modifier = Modifier.padding(vertical = 12.dp),
