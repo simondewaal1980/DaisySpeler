@@ -90,6 +90,8 @@ import nl.simon.daisyspeler.data.storage.SleepTimerOptions
 import nl.simon.daisyspeler.data.storage.SleepTimerState
 import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
 import nl.simon.daisyspeler.ui.components.BookCover
+import nl.simon.daisyspeler.ui.theme.DefaultIconSize
+import nl.simon.daisyspeler.ui.theme.scaledIconSize
 import nl.simon.daisyspeler.util.formatDate
 import nl.simon.daisyspeler.util.formatDuration
 import nl.simon.daisyspeler.util.formatTimer
@@ -149,7 +151,11 @@ fun PlayerScreen(
         },
         navigationIcon = {
           IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Terug")
+            Icon(
+              Icons.AutoMirrored.Filled.ArrowBack,
+              contentDescription = "Terug",
+              modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+            )
           }
         },
       )
@@ -325,7 +331,7 @@ private fun PlayerContent(
         Icon(
           Icons.AutoMirrored.Filled.MenuBook,
           contentDescription = null,
-          modifier = Modifier.size(36.dp),
+          modifier = Modifier.size(scaledIconSize(36.dp)),
           tint = MaterialTheme.colorScheme.primary,
         )
       }
@@ -402,7 +408,7 @@ private fun PlayerContent(
         Icon(
           if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
           contentDescription = if (playback.isPlaying) "Pauzeren" else "Afspelen",
-          modifier = Modifier.size(36.dp),
+          modifier = Modifier.size(scaledIconSize(36.dp)),
         )
       }
       FilledTonalButton(onClick = { onSeekRelative(30_000) }) { Text("+30") }
@@ -491,7 +497,7 @@ private fun CompactAction(
       imageVector = icon,
       contentDescription = null,
       tint = contentColor,
-      modifier = Modifier.size(24.dp),
+      modifier = Modifier.size(scaledIconSize(24.dp)),
     )
     Spacer(Modifier.height(2.dp))
     Text(
@@ -703,7 +709,7 @@ private fun BookmarksSheet(
                     Icons.Default.Delete,
                     contentDescription = "Bookmark verwijderen",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(scaledIconSize(20.dp)),
                   )
                 }
               }
@@ -861,7 +867,7 @@ private fun BookmarkSectionHeader(
         Icon(
           Icons.Default.DeleteSweep,
           contentDescription = null,
-          modifier = Modifier.size(18.dp),
+          modifier = Modifier.size(scaledIconSize(18.dp)),
         )
         Spacer(Modifier.width(6.dp))
         Text("Alles wissen")
@@ -887,7 +893,7 @@ private fun ManualBookmarkRow(
       Icons.Default.Bookmark,
       contentDescription = null,
       tint = MaterialTheme.colorScheme.primary,
-      modifier = Modifier.size(20.dp),
+      modifier = Modifier.size(scaledIconSize(20.dp)),
     )
     Spacer(Modifier.width(12.dp))
     Column(modifier = Modifier.weight(1f)) {
@@ -925,7 +931,7 @@ private fun ManualBookmarkRow(
         Icons.Default.Delete,
         contentDescription = "Bookmark verwijderen",
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.size(20.dp),
+        modifier = Modifier.size(scaledIconSize(20.dp)),
       )
     }
   }
