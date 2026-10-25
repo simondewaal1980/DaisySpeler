@@ -6,7 +6,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import nl.simon.daisyspeler.data.book.BookPosition
 import java.io.File
 
-class LibraryRepository(file: File) {
+class LibraryRepository(
+  file: File,
+  private val now: () -> Long = System::currentTimeMillis,
+) {
   private val store = JsonFileStore(file, LibraryData.serializer(), LibraryData())
   private val _entries = MutableStateFlow(store.read().entries)
   val entries: StateFlow<List<LibraryEntry>> = _entries.asStateFlow()
@@ -22,6 +25,7 @@ class LibraryRepository(file: File) {
       entry.copy(
         addedAtEpochMs = previous?.addedAtEpochMs ?: entry.addedAtEpochMs,
         lastPosition = previous?.lastPosition,
+        lastReadAtEpochMs = previous?.lastReadAtEpochMs ?: entry.lastReadAtEpochMs,
         coverPath = entry.coverPath ?: previous?.coverPath,
       )
     val updated = current.filterNot { it.id == entry.id } + merged
@@ -46,7 +50,8 @@ class LibraryRepository(file: File) {
     val index = current.indexOfFirst { it.id == bookId }
     if (index < 0) return
     val updated = current.toMutableList()
-    updated[index] = updated[index].copy(lastPosition = position)
+    updated[index] =
+      updated[index].copy(lastPosition = position, lastReadAtEpochMs = now())
     persist(updated)
   }
 

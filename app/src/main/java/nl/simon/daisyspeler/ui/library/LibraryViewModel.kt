@@ -1,5 +1,6 @@
 package nl.simon.daisyspeler.ui.library
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -17,6 +18,7 @@ import nl.simon.daisyspeler.data.storage.LibrarySourceType
 
 data class LibraryUiState(
   val entries: List<LibraryEntry> = emptyList(),
+  val sortOrder: LibrarySortOrder = LibrarySortOrder.LAST_READ,
   val importing: Boolean = false,
   val error: String? = null,
 )
@@ -24,12 +26,19 @@ data class LibraryUiState(
 class LibraryViewModel(private val container: AppContainer) : ViewModel() {
   private val local = MutableStateFlow(LibraryUiState())
   private val coverRequests = mutableSetOf<String>()
+  private val preferences =
+    container.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+  private val sortOrder = MutableStateFlow(readSortOrder())
 
   val uiState: StateFlow<LibraryUiState> =
-    combine(local, container.libraryRepository.entries) { state, entries ->
-        state.copy(entries = entries)
+    combine(local, container.libraryRepository.entries, sortOrder) { state, entries, order ->
+        state.copy(entries = sortLibraryEntries(entries, order), sortOrder = order)
       }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
+      .stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        LibraryUiState(sortOrder = sortOrder.value),
+      )
 
   fun importTree(uri: Uri) = import(uri, isZip = false)
 
@@ -96,6 +105,17 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     local.update { it.copy(error = null) }
   }
 
+  fun setSortOrder(order: LibrarySortOrder) {
+    if (sortOrder.value == order) return
+    sortOrder.value = order
+    preferences.edit().putString(KEY_SORT_ORDER, order.name).apply()
+  }
+
+  private fun readSortOrder(): LibrarySortOrder {
+    val stored = preferences.getString(KEY_SORT_ORDER, null) ?: return DEFAULT_SORT_ORDER
+    return LibrarySortOrder.entries.firstOrNull { it.name == stored } ?: DEFAULT_SORT_ORDER
+  }
+
   /** Backfills the cover of a book that was imported before cover support existed. */
   fun ensureCover(entry: LibraryEntry) {
     if (entry.coverPath != null || !coverRequests.add(entry.id)) return
@@ -103,5 +123,11 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
       runCatching { container.bookRepository.ensureCover(entry) }
       coverRequests.remove(entry.id)
     }
+  }
+
+  private companion object {
+    const val PREFS_NAME = "daisy_library"
+    const val KEY_SORT_ORDER = "sort_order"
+    val DEFAULT_SORT_ORDER = LibrarySortOrder.LAST_READ
   }
 }

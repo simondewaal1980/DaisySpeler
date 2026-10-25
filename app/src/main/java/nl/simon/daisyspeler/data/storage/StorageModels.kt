@@ -22,6 +22,8 @@ data class LibraryEntry(
   val tocCount: Int,
   val addedAtEpochMs: Long,
   val lastPosition: BookPosition? = null,
+  /** When the book was last played, used for the "laatst gelezen" sort order. */
+  val lastReadAtEpochMs: Long? = null,
   val sourceType: LibrarySourceType = LibrarySourceType.FOLDER,
   val localDir: String? = null,
   /** Absolute path of the cached cover image, if the book has one. */

@@ -18,6 +18,8 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
   of `book.opf`, of een bestand met een naam als `cover.jpg` of `omslag.png`),
   wordt die getoond in de bibliotheek en op het speler-scherm. De afbeelding
   wordt lokaal in de app opgeslagen, zodat een map-import blijft werken.
+- De boekenplank sorteren op alfabetische titel of op laatst gelezen boek. De
+  gekozen sortering blijft bewaard na een herstart.
 - Vorige/volgende kop, zoeken met de schuifbalk, −15 seconden en +30 seconden.
 - Automatische bookmarks: elke keer dat het afspelen start of stopt wordt een
   start/stop-paar opgeslagen. De stopreden wordt bewaard (pauze, slaaptimer,
