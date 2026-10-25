@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -68,6 +70,8 @@ import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.storage.LibraryEntry
 import nl.simon.daisyspeler.data.storage.LibrarySourceType
 import nl.simon.daisyspeler.ui.components.BookCover
+import nl.simon.daisyspeler.ui.theme.DefaultIconSize
+import nl.simon.daisyspeler.ui.theme.scaledIconSize
 import nl.simon.daisyspeler.util.formatDuration
 
 private val ZIP_MIME_TYPES =
@@ -87,6 +91,7 @@ fun LibraryScreen(
 ) {
   val viewModel: LibraryViewModel = viewModel { LibraryViewModel(container) }
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val largeIcons by container.uiPreferences.largeIcons.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val snackbarHostState = remember { SnackbarHostState() }
   var deleteTarget by remember { mutableStateOf<LibraryEntry?>(null) }
@@ -125,8 +130,26 @@ fun LibraryScreen(
       TopAppBar(
         title = { Text("DaisySpeler") },
         actions = {
+          IconButton(
+            onClick = { container.uiPreferences.toggleLargeIcons() },
+            modifier =
+              Modifier.semantics {
+                stateDescription = if (largeIcons) "Iconen vergroot" else "Iconen normaal"
+              },
+          ) {
+            Icon(
+              imageVector = if (largeIcons) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
+              contentDescription =
+                if (largeIcons) "Iconen verkleinen" else "Iconen vergroten",
+              modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+            )
+          }
           IconButton(onClick = onOpenAbout) {
-            Icon(Icons.Default.Info, contentDescription = "Over DaisySpeler")
+            Icon(
+              Icons.Default.Info,
+              contentDescription = "Over DaisySpeler",
+              modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+            )
           }
         },
       )
@@ -135,7 +158,13 @@ fun LibraryScreen(
     floatingActionButton = {
       ExtendedFloatingActionButton(
         onClick = { showAddSheet = true },
-        icon = { Icon(Icons.Default.Add, contentDescription = null) },
+        icon = {
+          Icon(
+            Icons.Default.Add,
+            contentDescription = null,
+            modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+          )
+        },
         text = { Text("Boek toevoegen") },
       )
     },
@@ -287,7 +316,7 @@ private fun SortButton(
       Icon(
         Icons.AutoMirrored.Filled.Sort,
         contentDescription = null,
-        modifier = Modifier.size(18.dp),
+        modifier = Modifier.size(scaledIconSize(18.dp)),
       )
       Spacer(Modifier.width(6.dp))
       Text("Sorteren")
@@ -322,7 +351,7 @@ private fun EmptyLibrary(onAdd: () -> Unit) {
     Icon(
       imageVector = Icons.Default.PlayArrow,
       contentDescription = null,
-      modifier = Modifier.size(64.dp),
+      modifier = Modifier.size(scaledIconSize(64.dp)),
       tint = MaterialTheme.colorScheme.primary,
     )
     Spacer(Modifier.height(16.dp))
@@ -375,7 +404,7 @@ private fun BookCard(
             Icons.Default.PlayArrow,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(scaledIconSize(32.dp)),
           )
         }
         Spacer(Modifier.width(12.dp))
@@ -398,7 +427,11 @@ private fun BookCard(
           }
         }
         IconButton(onClick = onDelete) {
-          Icon(Icons.Default.Delete, contentDescription = "Boek verwijderen")
+          Icon(
+            Icons.Default.Delete,
+            contentDescription = "Boek verwijderen",
+            modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+          )
         }
       }
 
@@ -428,7 +461,7 @@ private fun BookCard(
           Icons.AutoMirrored.Filled.ArrowForward,
           contentDescription = null,
           tint = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.size(18.dp),
+          modifier = Modifier.size(scaledIconSize(18.dp)),
         )
       }
 

@@ -37,6 +37,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import nl.simon.daisyspeler.R
+import nl.simon.daisyspeler.ui.theme.DefaultIconSize
+import nl.simon.daisyspeler.ui.theme.scaledIconSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +52,11 @@ fun AboutScreen(onBack: () -> Unit) {
         title = { Text("Over DaisySpeler") },
         navigationIcon = {
           IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Terug")
+            Icon(
+              Icons.AutoMirrored.Filled.ArrowBack,
+              contentDescription = "Terug",
+              modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+            )
           }
         },
       )
