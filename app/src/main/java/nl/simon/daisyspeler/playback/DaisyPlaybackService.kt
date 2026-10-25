@@ -25,6 +25,7 @@ import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -57,8 +58,15 @@ class DaisyPlaybackService : MediaSessionService() {
   private var mediaSession: MediaSession? = null
   private var loadedBook: DaisyBook? = null
   private var loadedBookId: String? = null
+  private var loadingBookId: String? = null
   private var loadJob: Job? = null
   private var sleepFadeJob: Job? = null
+
+  /**
+   * Set when the user asks to play while the book is still being loaded. The load finishes by
+   * starting playback, so a tap on play is never silently ignored.
+   */
+  private var pendingPlayBookId: String? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -143,9 +151,10 @@ class DaisyPlaybackService : MediaSessionService() {
       while (isActive) {
         val timer = sleepTimerManager.state.value
         if (timer != null) {
-          if (timer.bookId != loadedBookId) {
+          val bookId = loadedBookId ?: loadingBookId
+          if (bookId != null && timer.bookId != bookId) {
             sleepTimerManager.cancel()
-          } else if (sleepTimerManager.isExpired()) {
+          } else if (bookId == timer.bookId && sleepTimerManager.isExpired()) {
             fadeOutForSleepTimer()
           }
         }
@@ -163,7 +172,7 @@ class DaisyPlaybackService : MediaSessionService() {
     if (!player.isPlaying) return
 
     sleepFadeJob?.cancel()
-    sleepFadeJob =
+    val job =
       serviceScope.launch {
         val steps = (SLEEP_FADE_DURATION_MS / SLEEP_FADE_STEP_MS).toInt()
         try {
@@ -177,18 +186,21 @@ class DaisyPlaybackService : MediaSessionService() {
             player.pause()
           }
         } finally {
-          sleepFadeJob = null
-          // Restore the volume for the next playback session, unless the fade was
-          // interrupted by a pause (the player listener restores it after pausing).
-          if (isActive && player.isPlaying) player.volume = 1f
+          // Always restore the volume: a cancelled fade must not leave playback muted, and
+          // after a completed fade the next playback session starts at full volume.
+          player.volume = 1f
+          if (sleepFadeJob === coroutineContext[Job]) sleepFadeJob = null
         }
       }
+    sleepFadeJob = job
   }
 
   private fun cancelSleepFade() {
-    sleepFadeJob?.cancel()
+    val job = sleepFadeJob
     sleepFadeJob = null
-    if (!player.isPlaying) player.volume = 1f
+    job?.cancel()
+    // Restore the volume immediately, also when the fade was interrupted by pressing play.
+    player.volume = 1f
   }
 
   private fun startPositionSaver() {
@@ -203,47 +215,64 @@ class DaisyPlaybackService : MediaSessionService() {
   }
 
   private fun loadBook(bookId: String, autoPlay: Boolean = false) {
-    if (loadedBookId == bookId && player.mediaItemCount > 0) return
+    if (loadedBookId == bookId && player.mediaItemCount > 0) {
+      if (autoPlay) startPlayback()
+      return
+    }
+    // A load for this book is already running. Remember the play request and let the
+    // running load finish; starting a second load would only restart the work.
+    if (loadingBookId == bookId) {
+      if (autoPlay) pendingPlayBookId = bookId
+      return
+    }
+    if (pendingPlayBookId != bookId) pendingPlayBookId = null
     loadJob?.cancel()
+    loadingBookId = bookId
     loadJob =
       serviceScope.launch {
-        runCatching {
-            val entry =
-              libraryRepository.get(bookId)
-                ?: error("Boek niet gevonden in de bibliotheek.")
-            val book = bookRepository.loadById(bookId)
-            val source = bookRepository.sourceById(bookId)
-            val items = buildMediaItems(book, source, bookId)
-            withContext(Dispatchers.Main.immediate) {
-              if (items.isEmpty()) error("Geen audio gevonden.")
-              val timer = sleepTimerManager.state.value
-              if (timer != null && timer.bookId != bookId) sleepTimerManager.cancel()
-              loadedBook = book
-              loadedBookId = bookId
-              playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, bookId).apply()
-              player.playWhenReady = false
-              player.setMediaItems(items)
-              player.prepare()
-              entry.lastPosition?.let { position ->
-                val target = book.segmentForSource(position.sourcePath, position.sourceOffsetMs)
-                if (target != null) {
-                  player.seekTo(target.first.index, target.second)
-                }
-              }
-              updateSessionIntent()
-              if (autoPlay) {
-                recordStart()
-                player.play()
+        try {
+          val entry =
+            libraryRepository.get(bookId)
+              ?: error("Boek niet gevonden in de bibliotheek.")
+          val book = bookRepository.loadById(bookId)
+          val source = bookRepository.sourceById(bookId)
+          val items = buildMediaItems(book, source, bookId)
+          withContext(Dispatchers.Main.immediate) {
+            if (items.isEmpty()) error("Geen audio gevonden.")
+            val timer = sleepTimerManager.state.value
+            if (timer != null && timer.bookId != bookId) sleepTimerManager.cancel()
+            val playAfterLoad = autoPlay || pendingPlayBookId == bookId
+            loadedBook = book
+            loadedBookId = bookId
+            playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, bookId).apply()
+            player.playWhenReady = false
+            player.setMediaItems(items)
+            player.prepare()
+            entry.lastPosition?.let { position ->
+              val target = book.segmentForSource(position.sourcePath, position.sourceOffsetMs)
+              if (target != null) {
+                player.seekTo(target.first.index, target.second)
               }
             }
-          }
-          .onFailure {
-            Log.e(TAG, "Kon boek $bookId niet laden", it)
-            withContext(Dispatchers.Main.immediate) {
-              loadedBook = null
-              loadedBookId = null
+            updateSessionIntent()
+            if (playAfterLoad) {
+              pendingPlayBookId = null
+              recordStart()
+              player.play()
             }
           }
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (error: Throwable) {
+          Log.e(TAG, "Kon boek $bookId niet laden", error)
+          withContext(Dispatchers.Main.immediate) {
+            loadedBook = null
+            loadedBookId = null
+            if (pendingPlayBookId == bookId) pendingPlayBookId = null
+          }
+        } finally {
+          if (loadingBookId == bookId) loadingBookId = null
+        }
       }
   }
 
@@ -321,20 +350,41 @@ class DaisyPlaybackService : MediaSessionService() {
     if (player.isPlaying) {
       pausePlayback()
     } else {
-      if (player.playbackState == Player.STATE_ENDED) {
-        player.seekTo(0, 0L)
-      }
       startPlayback()
     }
   }
 
   private fun startPlayback() {
     cancelSleepFade()
+
+    // While another book is loading, remember the request so the new book starts playing as
+    // soon as its media items are ready. Otherwise the play command would be lost.
+    val loading = loadingBookId
+    if (loading != null && loading != loadedBookId) {
+      pendingPlayBookId = loading
+      return
+    }
+
+    if (player.mediaItemCount == 0) {
+      val bookId =
+        loadedBookId ?: loading ?: playbackPrefs.getString(KEY_LAST_BOOK_ID, null)
+      if (bookId != null) {
+        pendingPlayBookId = bookId
+        loadBook(bookId)
+      }
+      return
+    }
+
+    // A finished book has to rewind first; play() alone does nothing while it is ENDED.
+    if (player.playbackState == Player.STATE_ENDED) {
+      player.seekTo(0, 0L)
+    }
     recordStart()
     player.play()
   }
 
   private fun pausePlayback(reason: String = "PAUSE") {
+    pendingPlayBookId = null
     cancelSleepFade()
     recordStop(reason)
     player.pause()

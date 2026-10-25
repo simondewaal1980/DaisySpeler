@@ -76,6 +76,19 @@ class PlayerViewModel(
   private var controllerFuture: ListenableFuture<MediaController>? = null
   private var tickerJob: Job? = null
   private var loadRequested = false
+  private var pendingPlay = false
+  private var reconnectAttempts = 0
+
+  private val controllerListener =
+    object : MediaController.Listener {
+      override fun onDisconnected(controller: MediaController) {
+        if (this@PlayerViewModel.controller !== controller) return
+        controller.removeListener(playerListener)
+        this@PlayerViewModel.controller = null
+        loadRequested = false
+        scheduleReconnect()
+      }
+    }
 
   private val playerListener =
     object : Player.Listener {
@@ -130,12 +143,16 @@ class PlayerViewModel(
     val context = container.context
     val token =
       SessionToken(context, ComponentName(context, DaisyPlaybackService::class.java))
-    val future = MediaController.Builder(context, token).buildAsync()
+    val future =
+      MediaController.Builder(context, token)
+        .setListener(controllerListener)
+        .buildAsync()
     controllerFuture = future
     future.addListener(
       {
         runCatching { future.get() }
           .onSuccess { connected ->
+            reconnectAttempts = 0
             controller = connected
             connected.addListener(playerListener)
             maybeRequestLoad()
@@ -155,9 +172,22 @@ class PlayerViewModel(
     )
   }
 
-  private fun maybeRequestLoad() {
+  private fun scheduleReconnect() {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      _error.value = "De speler is de verbinding kwijtgeraakt."
+      return
+    }
+    reconnectAttempts++
+    viewModelScope.launch {
+      delay(500)
+      connectController()
+    }
+  }
+
+  private fun maybeRequestLoad(force: Boolean = false) {
     val controller = controller ?: return
-    if (_book.value == null || loadRequested) return
+    if (_book.value == null) return
+    if (loadRequested && !force) return
     loadRequested = true
     val args =
       Bundle().apply {
@@ -200,26 +230,58 @@ class PlayerViewModel(
         page = page,
         speed = controller.playbackParameters.speed,
       )
+    maybeStartPendingPlay()
+  }
+
+  /**
+   * Starts playback once the media items of the book are available. This makes a tap on play
+   * while the book is still being loaded (for example right after importing it) stick.
+   */
+  private fun maybeStartPendingPlay() {
+    if (!pendingPlay) return
+    val controller = controller ?: return
+    if (controller.mediaItemCount == 0) return
+    pendingPlay = false
+    if (controller.isPlaying) return
+    if (controller.playbackState == Player.STATE_ENDED) {
+      controller.seekTo(0, 0L)
+    }
+    controller.sendCustomCommand(
+      SessionCommand(PlaybackCommands.START_PLAYBACK, Bundle.EMPTY),
+      Bundle.EMPTY,
+    )
   }
 
   fun togglePlay() {
-    val controller = controller ?: return
+    val controller = controller
+    if (controller == null) {
+      pendingPlay = true
+      return
+    }
     if (controller.isPlaying) {
+      pendingPlay = false
       controller.sendCustomCommand(
         SessionCommand(PlaybackCommands.PAUSE_PLAYBACK, Bundle.EMPTY),
         Bundle.EMPTY,
       )
-    } else {
-      if (controller.playbackState == Player.STATE_ENDED ||
-        (book.value?.let { controller.currentPosition >= it.totalDurationMs - 1_000 } == true)
-      ) {
-        seekGlobal(0L)
-      }
-      controller.sendCustomCommand(
-        SessionCommand(PlaybackCommands.START_PLAYBACK, Bundle.EMPTY),
-        Bundle.EMPTY,
-      )
+      return
     }
+    if (controller.mediaItemCount == 0) {
+      // The book is still loading. Remember the request; playback starts when it is ready.
+      pendingPlay = true
+      maybeRequestLoad(force = true)
+      return
+    }
+    pendingPlay = false
+    if (controller.playbackState == Player.STATE_ENDED ||
+      (book.value?.let { _playback.value.globalMs >= it.totalDurationMs - 1_000 } == true)
+    ) {
+      seekGlobal(0L)
+    }
+    controller.sendCustomCommand(
+      SessionCommand(PlaybackCommands.START_PLAYBACK, Bundle.EMPTY),
+      Bundle.EMPTY,
+    )
   }
 
   fun seekRelative(deltaMs: Long) {
@@ -334,5 +396,9 @@ class PlayerViewModel(
     controller = null
     controllerFuture = null
     super.onCleared()
+  }
+
+  private companion object {
+    const val MAX_RECONNECT_ATTEMPTS = 5
   }
 }
