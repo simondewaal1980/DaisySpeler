@@ -680,7 +680,8 @@ private fun BookmarksSheet(
             },
           )
           Text(
-            "Bij de play/pause-knop en de slaaptimer wordt automatisch een markering gemaakt.",
+            "Bij de play/pause-knop en de slaaptimer wordt automatisch een markering " +
+              "gemaakt. De vijf meest recente sessies worden bewaard.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
