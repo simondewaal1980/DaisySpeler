@@ -23,8 +23,9 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
 - Vorige/volgende kop, zoeken met de schuifbalk, −15 seconden en +30 seconden.
 - Automatische bookmarks: elke keer dat het afspelen start of stopt wordt een
   start/stop-paar opgeslagen. De stopreden wordt bewaard (pauze, slaaptimer,
-  einde boek of fout). Bookmarks zijn per boek en per sessie te bekijken en aan
-  te tikken om terug te springen.
+  einde boek of fout). Per boek worden de vijf meest recente sessies bewaard;
+  oudere worden automatisch opgeruimd. Bookmarks zijn per boek en per sessie te
+  bekijken en aan te tikken om terug te springen.
 - Eigen bookmarks: met **Markeren** bewaar je de huidige plek, met een
   optionele notitie. Eigen bookmarks staan in het bookmarkscherm boven de
   automatische bookmarks en kunnen afzonderlijk worden verwijderd.

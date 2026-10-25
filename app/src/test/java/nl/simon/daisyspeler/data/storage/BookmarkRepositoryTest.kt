@@ -165,4 +165,50 @@ class BookmarkRepositoryTest {
     )
     assertEquals(0, repository.sessionsForBook("book").size)
   }
+
+  @Test
+  fun `keeps only the five most recent automatic bookmarks per book`() {
+    val file = Files.createTempDirectory("bookmarks-limit").resolve("bookmarks.json").toFile()
+    val repository = BookmarkRepository(file)
+
+    for (index in 1..7) {
+      val offset = index * 1_000L
+      repository.recordStart("book", BookPosition("a.mp3", offset, offset, null), now = offset)
+      repository.recordStop(
+        "book",
+        BookPosition("a.mp3", offset + 500L, offset + 500L, null),
+        reason = "PAUSE",
+        now = offset + 1L,
+      )
+    }
+    repository.recordStart("other", BookPosition("b.mp3", 1_000L, 1_000L, null), now = 100L)
+
+    val sessions = repository.sessionsForBook("book")
+    assertEquals(5, sessions.size)
+    assertEquals(7_000L, sessions.first().start.globalMs)
+    assertEquals(3_000L, sessions.last().start.globalMs)
+    assertEquals(1, repository.sessionsForBook("other").size)
+    assertEquals(5, BookmarkRepository(file).sessionsForBook("book").size)
+  }
+
+  @Test
+  fun `cleans up extra automatic bookmarks when loading an older file`() {
+    val file = Files.createTempDirectory("bookmarks-limit-load").resolve("bookmarks.json").toFile()
+    val sessions =
+      (1..8).joinToString(",") { index ->
+        val start =
+          """{"sourcePath":"a.mp3","sourceOffsetMs":$index,""" +
+            """"globalMs":${index * 1_000},"createdAtEpochMs":$index}"""
+        """{"id":"s$index","bookId":"book","start":$start}"""
+      }
+    file.writeText("""{"sessions":[$sessions]}""")
+
+    val repository = BookmarkRepository(file)
+
+    val loaded = repository.sessionsForBook("book")
+    assertEquals(5, loaded.size)
+    assertEquals(8_000L, loaded.first().start.globalMs)
+    assertEquals(4_000L, loaded.last().start.globalMs)
+    assertEquals(5, BookmarkRepository(file).sessionsForBook("book").size)
+  }
 }

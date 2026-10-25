@@ -9,11 +9,17 @@ import java.util.UUID
 
 class BookmarkRepository(file: File) {
   private val store = JsonFileStore(file, BookmarkData.serializer(), BookmarkData())
-  private val initial = store.read()
+  private val stored = store.read()
+  private val initial = stored.trimmed()
   private val _sessions = MutableStateFlow(initial.sessions)
   val sessions: StateFlow<List<BookmarkSession>> = _sessions.asStateFlow()
   private val _manual = MutableStateFlow(initial.manual)
   val manualBookmarks: StateFlow<List<ManualBookmark>> = _manual.asStateFlow()
+
+  init {
+    // Files from older versions can hold more bookmarks than the current limits allow.
+    if (initial != stored) store.write(initial)
+  }
 
   @Synchronized
   fun recordStart(bookId: String, position: BookPosition, now: Long = System.currentTimeMillis()) {
@@ -102,24 +108,31 @@ class BookmarkRepository(file: File) {
     sessions: List<BookmarkSession> = _sessions.value,
     manual: List<ManualBookmark> = _manual.value,
   ) {
-    val trimmedSessions =
-      sessions
-        .groupBy { it.bookId }
-        .flatMap { (_, list) ->
-          list.sortedByDescending { it.start.createdAtEpochMs }.take(MAX_SESSIONS_PER_BOOK)
-        }
-        .sortedBy { it.start.createdAtEpochMs }
-    val trimmedManual =
-      manual
-        .groupBy { it.bookId }
-        .flatMap { (_, list) ->
-          list.sortedByDescending { it.point.createdAtEpochMs }.take(MAX_MANUAL_PER_BOOK)
-        }
-        .sortedBy { it.point.createdAtEpochMs }
-    _sessions.value = trimmedSessions
-    _manual.value = trimmedManual
-    store.write(BookmarkData(sessions = trimmedSessions, manual = trimmedManual))
+    val trimmed = BookmarkData(sessions = sessions, manual = manual).trimmed()
+    _sessions.value = trimmed.sessions
+    _manual.value = trimmed.manual
+    store.write(trimmed)
   }
+
+  private fun BookmarkData.trimmed(): BookmarkData =
+    BookmarkData(sessions = sessions.trimSessions(), manual = manual.trimManual())
+
+  /** Keeps only the most recent automatic bookmarks per book and drops the older ones. */
+  private fun List<BookmarkSession>.trimSessions(): List<BookmarkSession> =
+    groupBy { it.bookId }
+      .values
+      .flatMap { list ->
+        list.sortedByDescending { it.start.createdAtEpochMs }.take(MAX_AUTOMATIC_PER_BOOK)
+      }
+      .sortedBy { it.start.createdAtEpochMs }
+
+  private fun List<ManualBookmark>.trimManual(): List<ManualBookmark> =
+    groupBy { it.bookId }
+      .values
+      .flatMap { list ->
+        list.sortedByDescending { it.point.createdAtEpochMs }.take(MAX_MANUAL_PER_BOOK)
+      }
+      .sortedBy { it.point.createdAtEpochMs }
 
   private fun BookPosition.toBookmarkPoint(now: Long, reason: String? = null): BookmarkPoint =
     BookmarkPoint(
@@ -132,7 +145,8 @@ class BookmarkRepository(file: File) {
     )
 
   private companion object {
-    const val MAX_SESSIONS_PER_BOOK = 100
+    /** Only the five most recent listening sessions per book are kept. */
+    const val MAX_AUTOMATIC_PER_BOOK = 5
     const val MAX_MANUAL_PER_BOOK = 200
   }
 }
