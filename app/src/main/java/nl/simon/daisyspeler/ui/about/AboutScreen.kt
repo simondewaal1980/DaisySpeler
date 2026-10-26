@@ -101,6 +101,9 @@ fun AboutScreen(onBack: () -> Unit) {
       )
 
       Spacer(Modifier.height(24.dp))
+      HelpCard()
+
+      Spacer(Modifier.height(16.dp))
       Card(
         modifier = Modifier.fillMaxWidth(),
         colors =
@@ -126,6 +129,52 @@ fun AboutScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
+      }
+    }
+  }
+}
+
+@Composable
+private fun HelpCard() {
+  val tips =
+    listOf(
+      "Voeg boeken toe met ‘Boek toevoegen’ op de boekenplank: kies een uitgepakte " +
+        "DAISY-map of een ZIP-bestand.",
+      "Open een boek en tik op de afspeelknop. Met −15 en +30 seconden spring je terug " +
+        "of vooruit.",
+      "Met ‘Vorige’ en ‘Volgende’ ga je naar een hoofdstuk; ‘Inhoud’ toont de inhoudsopgave.",
+      "‘Markeren’ bewaart je plek. Automatische bookmarks ontstaan bij play/pause, de " +
+        "slaaptimer en een boekwissel.",
+      "Met ‘Slaaptimer’ pauzeert het boek vanzelf; met ‘Snelheid’ kies je hoe snel er " +
+        "wordt voorgelezen.",
+      "Bij teruggaan naar de boekenplank stopt het boek en blijft je luisterpositie bewaard. " +
+        "Met de afsluitknop sluit je DaisySpeler veilig af.",
+    )
+
+  Card(
+    modifier = Modifier.fillMaxWidth(),
+    colors =
+      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+  ) {
+    Column(modifier = Modifier.padding(20.dp)) {
+      Text(
+        "Help",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+      )
+      Spacer(Modifier.height(4.dp))
+      Text(
+        "Zo gebruik je de speler:",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Spacer(Modifier.height(12.dp))
+      tips.forEach { tip ->
+        Text(
+          "• $tip",
+          style = MaterialTheme.typography.bodyMedium,
+          modifier = Modifier.padding(bottom = 8.dp),
+        )
       }
     }
   }
