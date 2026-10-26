@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ZoomIn
@@ -87,6 +88,7 @@ private val ZIP_MIME_TYPES =
 fun LibraryScreen(
   container: AppContainer,
   onOpenBook: (String) -> Unit,
+  onOpenCoverBrowser: (String) -> Unit,
   onOpenAbout: () -> Unit,
 ) {
   val viewModel: LibraryViewModel = viewModel { LibraryViewModel(container) }
@@ -198,6 +200,7 @@ fun LibraryScreen(
             BookCard(
               entry = entry,
               onOpen = { onOpenBook(entry.id) },
+              onFindCover = { onOpenCoverBrowser(entry.id) },
               onDelete = { deleteTarget = entry },
               onEnsureCover = { viewModel.ensureCover(entry) },
             )
@@ -375,6 +378,7 @@ private fun EmptyLibrary(onAdd: () -> Unit) {
 private fun BookCard(
   entry: LibraryEntry,
   onOpen: () -> Unit,
+  onFindCover: () -> Unit,
   onDelete: () -> Unit,
   onEnsureCover: () -> Unit,
 ) {
@@ -425,6 +429,13 @@ private fun BookCard(
               overflow = TextOverflow.Ellipsis,
             )
           }
+        }
+        IconButton(onClick = onFindCover) {
+          Icon(
+            Icons.Default.ImageSearch,
+            contentDescription = "Omslag zoeken",
+            modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+          )
         }
         IconButton(onClick = onDelete) {
           Icon(

@@ -167,6 +167,29 @@ class BookRepository(
     }
   }
 
+  /**
+   * Stores an image that the user picked in the cover browser as the cover of this book. A unique
+   * file name is used so the displayed cover is refreshed immediately, even when the previous
+   * cover had the same format.
+   */
+  suspend fun setCover(bookId: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {
+    if (bytes.isEmpty() || bytes.size > MAX_COVER_BYTES) return@withContext null
+    val extension = ImageFiles.extensionOf(bytes) ?: return@withContext null
+    if (!ensureCoversRoot()) return@withContext null
+
+    val target = File(coversRoot, "$bookId-${System.currentTimeMillis()}.$extension")
+    return@withContext try {
+      target.outputStream().use { it.write(bytes) }
+      coversRoot.listFiles { file -> file != target && isCoverFile(file, bookId) }
+        ?.forEach { it.delete() }
+      libraryRepository.updateCover(bookId, target.absolutePath)
+      target.absolutePath
+    } catch (_: Throwable) {
+      target.delete()
+      null
+    }
+  }
+
   private fun cacheCover(bookId: String, relativePath: String?, source: BookSource): String? {
     val coverPath = relativePath ?: return null
     if (!ImageFiles.isImage(coverPath)) return null
@@ -245,13 +268,16 @@ class BookRepository(
       return null
     }
 
-    // Remove covers with a different extension from an earlier import.
-    coversRoot.listFiles { file ->
-      file.name.startsWith("$bookId.") && file.name != target.name
-    }?.forEach { it.delete() }
+    // Remove covers of an earlier import or a previous manual choice.
+    coversRoot.listFiles { file -> file != target && isCoverFile(file, bookId) }?.forEach {
+      it.delete()
+    }
 
     return target.absolutePath
   }
+
+  private fun isCoverFile(file: File, bookId: String): Boolean =
+    file.name.startsWith("$bookId.") || file.name.startsWith("$bookId-")
 
   fun forget(bookId: String) {
     cache.remove(bookId)
@@ -263,7 +289,7 @@ class BookRepository(
    * Removes the extracted copy of a ZIP-imported book. Folder imports are left untouched.
    */
   fun deleteLocalFiles(entry: LibraryEntry) {
-    coversRoot.listFiles { file -> file.name.startsWith("${entry.id}.") }?.forEach { it.delete() }
+    coversRoot.listFiles { file -> isCoverFile(file, entry.id) }?.forEach { it.delete() }
     val localDir = entry.localDir ?: return
     val root = booksRoot.canonicalFile
     val target = File(localDir).canonicalFile

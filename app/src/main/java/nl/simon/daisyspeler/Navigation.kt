@@ -8,6 +8,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import nl.simon.daisyspeler.ui.about.AboutScreen
+import nl.simon.daisyspeler.ui.cover.CoverBrowserScreen
 import nl.simon.daisyspeler.ui.library.LibraryScreen
 import nl.simon.daisyspeler.ui.player.PlayerScreen
 import nl.simon.daisyspeler.ui.theme.LARGER_ICON_SCALE
@@ -30,6 +31,7 @@ fun MainNavigation(container: AppContainer) {
             LibraryScreen(
               container = container,
               onOpenBook = { bookId -> backStack.add(PlayerRoute(bookId)) },
+              onOpenCoverBrowser = { bookId -> backStack.add(CoverBrowserRoute(bookId)) },
               onOpenAbout = { backStack.add(AboutRoute) },
             )
           }
@@ -38,6 +40,16 @@ fun MainNavigation(container: AppContainer) {
           }
           entry<PlayerRoute> { route ->
             PlayerScreen(
+              container = container,
+              bookId = route.bookId,
+              onBack = { backStack.removeLastOrNull() },
+              onOpenCoverBrowser = {
+                backStack.add(CoverBrowserRoute(route.bookId))
+              },
+            )
+          }
+          entry<CoverBrowserRoute> { route ->
+            CoverBrowserScreen(
               container = container,
               bookId = route.bookId,
               onBack = { backStack.removeLastOrNull() },

@@ -18,6 +18,10 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
   of `book.opf`, of een bestand met een naam als `cover.jpg` of `omslag.png`),
   wordt die getoond in de bibliotheek en op het speler-scherm. De afbeelding
   wordt lokaal in de app opgeslagen, zodat een map-import blijft werken.
+- Zelf een omslag kiezen: via het afbeeldingsicoon bij een boek (of rechtsboven
+  in de speler) opent een kleine browser met Google Afbeeldingen, al ingesteld
+  op titel en auteur. Houd een afbeelding ingedrukt om hem als omslag op te
+  slaan.
 - De boekenplank sorteren op alfabetische titel of op laatst gelezen boek. De
   gekozen sortering blijft bewaard na een herstart.
 - Vorige/volgende kop, zoeken met de schuifbalk, −15 seconden en +30 seconden.
@@ -63,7 +67,9 @@ wordt verplaatst of verwijderd, kan het boek niet meer worden geopend. Een ZIP
 wordt bij import uitgepakt naar app-eigen opslag; het originele ZIP-bestand
 blijft staan. Als je een ZIP-boek uit de bibliotheek verwijdert, worden de
 uitgepakte bestanden verwijderd. Boekgegevens, bookmarks en de slaaptimer worden
-lokaal in de app opgeslagen; er is geen netwerkverbinding nodig.
+lokaal in de app opgeslagen. Alleen de coverbrowser gebruikt internet: daarin
+wordt Google Afbeeldingen geopend en wordt de door jou gekozen afbeelding
+gedownload. De rest van de app werkt zonder netwerkverbinding.
 
 ## Bouwen en testen
 
@@ -93,8 +99,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Geen gesynchroniseerde tekstweergave; de app is gericht op audio en navigatie.
 - Eén boek per gekozen map of ZIP-bestand. Kies bij meerdere boeken steeds het
   bestand of de map van het afzonderlijke boek.
-- Alleen omslagafbeeldingen als los bestand in het boek. Hoezen die alleen in
-  ID3-tags van de MP3-bestanden zitten, worden niet gelezen.
+- Boeken zonder omslagafbeelding en zonder ID3-hoes tonen het standaard
+  boek-icoon. Via de coverbrowser kan er alsnog handmatig een omslag worden
+  gekozen; daarvoor is wel internet nodig.
 
 ## Techniek
 

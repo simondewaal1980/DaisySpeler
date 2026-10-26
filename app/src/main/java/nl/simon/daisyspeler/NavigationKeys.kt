@@ -8,3 +8,5 @@ import kotlinx.serialization.Serializable
 @Serializable data object AboutRoute : NavKey
 
 @Serializable data class PlayerRoute(val bookId: String) : NavKey
+
+@Serializable data class CoverBrowserRoute(val bookId: String) : NavKey

@@ -123,6 +123,11 @@ class PlayerViewModel(
     }
   }
 
+  /** Picks up a cover that was chosen while the player was in the background. */
+  fun refreshCover() {
+    container.libraryRepository.get(bookId)?.coverPath?.let { _coverPath.value = it }
+  }
+
   private fun loadBook() {
     viewModelScope.launch {
       runCatching {

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -74,6 +75,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
@@ -116,6 +119,7 @@ fun PlayerScreen(
   container: AppContainer,
   bookId: String,
   onBack: () -> Unit,
+  onOpenCoverBrowser: () -> Unit,
 ) {
   val viewModel: PlayerViewModel = viewModel(key = bookId) { PlayerViewModel(container, bookId) }
   val book by viewModel.book.collectAsStateWithLifecycle()
@@ -131,6 +135,8 @@ fun PlayerScreen(
   var showAddBookmark by remember { mutableStateOf(false) }
   val context = LocalContext.current
   val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshCover() }
 
   LaunchedEffect(error) {
     error?.let {
@@ -154,6 +160,15 @@ fun PlayerScreen(
             Icon(
               Icons.AutoMirrored.Filled.ArrowBack,
               contentDescription = "Terug",
+              modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+            )
+          }
+        },
+        actions = {
+          IconButton(onClick = onOpenCoverBrowser) {
+            Icon(
+              Icons.Default.ImageSearch,
+              contentDescription = "Omslag zoeken",
               modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
             )
           }
