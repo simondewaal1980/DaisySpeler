@@ -54,23 +54,23 @@ data class DaisyBook(
   val coverPath: String? = null,
 ) {
   fun segmentAtGlobal(positionMs: Long): Pair<AudioSegment, Long>? {
+    if (segments.isEmpty()) return null
     val safe = positionMs.coerceAtLeast(0L)
-    for (segment in segments) {
-      if (safe <= segment.trackStartMs + segment.durationMs || segment === segments.last()) {
-        return segment to (safe - segment.trackStartMs).coerceIn(0L, segment.durationMs)
-      }
-    }
-    return null
+    // Segments are half-open intervals: [trackStart, trackStart + duration). This makes a
+    // position exactly on a boundary belong to the next segment instead of the previous one.
+    val segment =
+      segments.firstOrNull { safe < it.trackStartMs + it.durationMs } ?: segments.last()
+    return segment to (safe - segment.trackStartMs).coerceIn(0L, segment.durationMs)
   }
 
   fun segmentForSource(sourcePath: String, sourceOffsetMs: Long): Pair<AudioSegment, Long>? {
+    val candidates = segments.filter { it.sourcePath.equals(sourcePath, ignoreCase = true) }
+    if (candidates.isEmpty()) return null
+
     val segment =
-      segments.firstOrNull {
-        it.sourcePath.equals(sourcePath, ignoreCase = true) &&
-          sourceOffsetMs >= it.clipStartMs &&
-          sourceOffsetMs <= it.clipEndMs
-      } ?: segments.firstOrNull { it.sourcePath.equals(sourcePath, ignoreCase = true) }
-        ?: return null
+      candidates.firstOrNull {
+        sourceOffsetMs >= it.clipStartMs && sourceOffsetMs < it.clipEndMs
+      } ?: candidates.firstOrNull { sourceOffsetMs < it.clipStartMs } ?: candidates.last()
     return segment to (sourceOffsetMs - segment.clipStartMs).coerceIn(0L, segment.durationMs)
   }
 
@@ -84,9 +84,13 @@ data class DaisyBook(
     val headings = toc.filter { it.type == NavType.HEADING }
     if (headings.isEmpty()) return null
     return if (forward) {
-      headings.firstOrNull { it.globalMs > positionMs + 750 } ?: headings.last()
+      // Only fall back to the last heading when it is not behind the current position.
+      headings.firstOrNull { it.globalMs > positionMs + 750 }
+        ?: headings.last().takeIf { it.globalMs >= positionMs }
     } else {
-      headings.lastOrNull { it.globalMs < positionMs - 1_500 } ?: headings.first()
+      // Only fall back to the first heading when it is not ahead of the current position.
+      headings.lastOrNull { it.globalMs < positionMs - 1_500 }
+        ?: headings.first().takeIf { it.globalMs <= positionMs }
     }
   }
 

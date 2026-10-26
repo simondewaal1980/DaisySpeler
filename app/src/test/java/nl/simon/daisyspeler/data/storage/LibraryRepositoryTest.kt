@@ -130,6 +130,34 @@ class LibraryRepositoryTest {
   }
 
   @Test
+  fun `update cover can clear an invalid cover path`() {
+    val file = Files.createTempDirectory("library-clear-cover").resolve("library.json").toFile()
+    try {
+      val repository = LibraryRepository(file)
+      repository.addOrUpdate(
+        LibraryEntry(
+          id = "book",
+          treeUri = "content://book",
+          title = "Boek",
+          author = null,
+          durationMs = 1000,
+          tocCount = 2,
+          addedAtEpochMs = 3,
+          coverPath = "/covers/book.jpg",
+        )
+      )
+
+      repository.updateCover("book", null)
+
+      val entry = repository.get("book")
+      assertNull(entry?.coverPath)
+      assertEquals("Boek", entry?.title)
+    } finally {
+      file.parentFile?.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `update cover keeps the rest of the entry`() {
     val file = Files.createTempDirectory("library").resolve("library.json").toFile()
     try {

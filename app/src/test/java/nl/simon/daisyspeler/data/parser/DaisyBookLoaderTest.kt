@@ -211,6 +211,56 @@ class DaisyBookLoaderTest {
     assertEquals("book/voorblad.png", book.coverPath)
   }
 
+  @Test
+  fun `uses a neutral title when ncc in the root has no title metadata`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "ncc.html" to
+            """
+            <html><head></head><body>
+              <h1><a href="s.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent(),
+          "s.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent(),
+          "a.mp3" to "",
+        )
+      )
+
+    assertEquals("Naamloos boek", DaisyBookLoader().load(source).title)
+  }
+
+  @Test
+  fun `uses the folder name when ncc in a folder has no title metadata`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "mijn-boek/ncc.html" to
+            """
+            <html><head></head><body>
+              <h1><a href="s.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent(),
+          "mijn-boek/s.smil" to
+            """
+            <smil><body><par>
+              <text src="ncc.html#p1" id="p1"/>
+              <audio src="a.mp3" clip-begin="npt=0s" clip-end="npt=1s"/>
+            </par></body></smil>
+            """.trimIndent(),
+          "mijn-boek/a.mp3" to "",
+        )
+      )
+
+    assertEquals("mijn-boek", DaisyBookLoader().load(source).title)
+  }
+
   private fun sampleBook(): MemoryBookSource =
     MemoryBookSource.fromText(
       mapOf(

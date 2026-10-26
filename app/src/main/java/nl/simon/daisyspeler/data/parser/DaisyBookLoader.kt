@@ -160,7 +160,12 @@ class DaisyBookLoader {
     }
 
     return DaisyBook(
-      title = ncc.title ?: opf?.title ?: nccFile.path.substringBeforeLast('/').substringAfterLast('/'),
+      title =
+        ncc.title
+          ?: opf?.title
+          ?: PathUtils.parent(nccFile.path)
+            .substringAfterLast('/')
+            .ifBlank { "Naamloos boek" },
       author = ncc.author ?: opf?.author,
       language = ncc.language ?: opf?.language,
       totalDurationMs = totalDuration,

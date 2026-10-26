@@ -133,6 +133,8 @@ fun PlayerScreen(
   val scope = rememberCoroutineScope()
   var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
   var showAddBookmark by remember { mutableStateOf(false) }
+  var bookmarkPositionMs by remember { mutableStateOf<Long?>(null) }
+  var bookmarkLabel by remember { mutableStateOf<String?>(null) }
   val context = LocalContext.current
   val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
@@ -216,7 +218,11 @@ fun PlayerScreen(
       onSeekGlobal = viewModel::seekGlobal,
       onPreviousHeading = viewModel::previousHeading,
       onNextHeading = viewModel::nextHeading,
-      onAddBookmark = { showAddBookmark = true },
+      onAddBookmark = {
+        bookmarkPositionMs = playback.globalMs
+        bookmarkLabel = playback.heading
+        showAddBookmark = true
+      },
       onOpenToc = { sheet = PlayerSheet.TOC },
       onOpenBookmarks = { sheet = PlayerSheet.BOOKMARKS },
       onOpenSleepTimer = { sheet = PlayerSheet.SLEEP },
@@ -281,12 +287,19 @@ fun PlayerScreen(
 
   if (showAddBookmark) {
     AddBookmarkDialog(
-      positionMs = playback.globalMs,
-      positionLabel = playback.heading,
-      onDismiss = { showAddBookmark = false },
-      onConfirm = { note ->
-        val added = viewModel.addBookmark(note)
+      positionMs = bookmarkPositionMs ?: playback.globalMs,
+      positionLabel = bookmarkLabel ?: playback.heading,
+      onDismiss = {
         showAddBookmark = false
+        bookmarkPositionMs = null
+        bookmarkLabel = null
+      },
+      onConfirm = { note ->
+        val position = bookmarkPositionMs ?: playback.globalMs
+        val added = viewModel.addBookmarkAt(position, note)
+        showAddBookmark = false
+        bookmarkPositionMs = null
+        bookmarkLabel = null
         scope.launch {
           snackbarHostState.showSnackbar(
             if (added) "Bookmark toegevoegd" else "Bookmark kon niet worden toegevoegd"
@@ -321,6 +334,7 @@ private fun PlayerContent(
   var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
   LaunchedEffect(timer?.deadlineEpochMs) {
+    if (timer == null) return@LaunchedEffect
     while (isActive) {
       now = System.currentTimeMillis()
       delay(1_000)
@@ -643,7 +657,7 @@ private fun BookmarksSheet(
       )
       Text(
         "Eigen bookmarks bewaar je op de huidige plek. Daarnaast maakt de speler " +
-          "automatisch een markering bij play/pause en de slaaptimer.",
+          "automatisch een markering bij play/pause, de slaaptimer en het wisselen van boek.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -695,8 +709,9 @@ private fun BookmarksSheet(
             },
           )
           Text(
-            "Bij de play/pause-knop en de slaaptimer wordt automatisch een markering " +
-              "gemaakt. De vijf meest recente sessies worden bewaard.",
+            "Bij de play/pause-knop, de slaaptimer en het teruggaan naar de boekenplank " +
+              "wordt automatisch een markering gemaakt. De vijf meest recente sessies " +
+              "worden bewaard.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -741,6 +756,10 @@ private fun BookmarksSheet(
                     when (stop.reason) {
                       "SLEEP_TIMER" -> "Stop (slaaptimer)"
                       "END" -> "Einde boek"
+                      "boekwissel" -> "Stop (boekwissel)"
+                      "SWITCH" -> "Stop (ander boek)"
+                      "REMOVE" -> "Stop (boek verwijderd)"
+                      "STALE" -> "Stop (oude sessie)"
                       else -> "Stop"
                     },
                   point = stop,
@@ -1042,6 +1061,7 @@ private fun SleepTimerSheet(
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
   LaunchedEffect(timer?.deadlineEpochMs) {
+    if (timer == null) return@LaunchedEffect
     while (isActive) {
       now = System.currentTimeMillis()
       delay(1_000)

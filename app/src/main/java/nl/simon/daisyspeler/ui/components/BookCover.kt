@@ -20,6 +20,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,14 +54,20 @@ fun BookCover(
         }
   }
 
+  val image = bitmap
+  val fallbackDescription = contentDescription
   Box(
     modifier =
       modifier
         .clip(RoundedCornerShape(8.dp))
-        .background(MaterialTheme.colorScheme.surfaceVariant),
+        .background(MaterialTheme.colorScheme.surfaceVariant)
+        .semantics {
+          if (image == null && fallbackDescription != null) {
+            this.contentDescription = fallbackDescription
+          }
+        },
     contentAlignment = Alignment.Center,
   ) {
-    val image = bitmap
     if (image != null) {
       Image(
         bitmap = image,

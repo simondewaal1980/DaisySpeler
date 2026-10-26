@@ -35,12 +35,12 @@ class LibraryRepository(
 
   @Synchronized
   fun updateCover(bookId: String, coverPath: String?) {
-    if (coverPath.isNullOrBlank()) return
+    val normalized = coverPath?.takeIf { it.isNotBlank() }
     val current = _entries.value
     val index = current.indexOfFirst { it.id == bookId }
-    if (index < 0 || current[index].coverPath == coverPath) return
+    if (index < 0 || current[index].coverPath == normalized) return
     val updated = current.toMutableList()
-    updated[index] = updated[index].copy(coverPath = coverPath)
+    updated[index] = updated[index].copy(coverPath = normalized)
     persist(updated)
   }
 

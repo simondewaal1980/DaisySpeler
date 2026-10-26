@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -70,6 +71,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.storage.LibraryEntry
 import nl.simon.daisyspeler.data.storage.LibrarySourceType
+import nl.simon.daisyspeler.playback.DaisyPlaybackService
 import nl.simon.daisyspeler.ui.components.BookCover
 import nl.simon.daisyspeler.ui.theme.DefaultIconSize
 import nl.simon.daisyspeler.ui.theme.scaledIconSize
@@ -90,6 +92,7 @@ fun LibraryScreen(
   onOpenBook: (String) -> Unit,
   onOpenCoverBrowser: (String) -> Unit,
   onOpenAbout: () -> Unit,
+  onExit: () -> Unit,
 ) {
   val viewModel: LibraryViewModel = viewModel { LibraryViewModel(container) }
   val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -98,6 +101,7 @@ fun LibraryScreen(
   val snackbarHostState = remember { SnackbarHostState() }
   var deleteTarget by remember { mutableStateOf<LibraryEntry?>(null) }
   var showAddSheet by remember { mutableStateOf(false) }
+  var showExitConfirmation by remember { mutableStateOf(false) }
 
   val folderPicker =
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -150,6 +154,13 @@ fun LibraryScreen(
             Icon(
               Icons.Default.Info,
               contentDescription = "Over DaisySpeler",
+              modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
+            )
+          }
+          IconButton(onClick = { showExitConfirmation = true }) {
+            Icon(
+              Icons.AutoMirrored.Filled.ExitToApp,
+              contentDescription = "DaisySpeler afsluiten",
               modifier = Modifier.size(scaledIconSize(DefaultIconSize)),
             )
           }
@@ -257,6 +268,31 @@ fun LibraryScreen(
       },
       dismissButton = {
         TextButton(onClick = { deleteTarget = null }) { Text("Annuleren") }
+      },
+    )
+  }
+
+  if (showExitConfirmation) {
+    AlertDialog(
+      onDismissRequest = { showExitConfirmation = false },
+      title = { Text("DaisySpeler afsluiten?") },
+      text = {
+        Text(
+          "Het afspelen stopt en de app wordt gesloten. " +
+            "Je luisterpositie wordt bewaard."
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            showExitConfirmation = false
+            DaisyPlaybackService.requestShutdown(context)
+            onExit()
+          }
+        ) { Text("Afsluiten") }
+      },
+      dismissButton = {
+        TextButton(onClick = { showExitConfirmation = false }) { Text("Annuleren") }
       },
     )
   }
@@ -390,7 +426,7 @@ private fun BookCard(
     }
 
   LaunchedEffect(entry.id, entry.coverPath) {
-    if (entry.coverPath == null) onEnsureCover()
+    onEnsureCover()
   }
 
   Card(
@@ -455,7 +491,8 @@ private fun BookCard(
         )
         Spacer(Modifier.width(8.dp))
         Text(
-          "· ${entry.tocCount} navigatiepunten",
+          "· ${entry.tocCount} " +
+            if (entry.tocCount == 1) "navigatiepunt" else "navigatiepunten",
           style = MaterialTheme.typography.labelMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -484,7 +521,7 @@ private fun BookCard(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-          "Verder vanaf ${formatDuration(lastPosition?.globalMs ?: 0L)}",
+          "Verder vanaf ${formatDuration(lastPosition.globalMs)}",
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
