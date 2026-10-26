@@ -111,7 +111,7 @@ object NccParser {
 
   private fun navType(element: Element, tag: String): NavType? {
     val classes = element.classNames().map { it.lowercase() }
-    if (classes.any { it.startsWith("page") }) return NavType.PAGE
+    if (classes.any { it == "page" || it.startsWith("page-") }) return NavType.PAGE
     if (classes.any { it == "sidebar" }) return NavType.SIDEBAR
     if (classes.any { it == "footnote" || it == "noteref" }) return NavType.FOOTNOTE
     if (classes.any { it == "prodnote" || it == "optional-prodnote" || it == "producer-note" }) {

@@ -167,6 +167,19 @@ class BookmarkRepositoryTest {
   }
 
   @Test
+  fun `closes a stale active session before starting a new one`() {
+    val file = Files.createTempDirectory("bookmarks-stale").resolve("bookmarks.json").toFile()
+    val repository = BookmarkRepository(file)
+    repository.recordStart("book", BookPosition("a.mp3", 100L, 100L, null), now = 0L)
+    repository.recordStart("book", BookPosition("a.mp3", 200L, 200L, null), now = 13 * 60 * 60 * 1000L)
+
+    val sessions = repository.sessionsForBook("book")
+    assertEquals(2, sessions.size)
+    assertNull(sessions.first().stop)
+    assertEquals("STALE", sessions.last().stop?.reason)
+  }
+
+  @Test
   fun `keeps only the five most recent automatic bookmarks per book`() {
     val file = Files.createTempDirectory("bookmarks-limit").resolve("bookmarks.json").toFile()
     val repository = BookmarkRepository(file)

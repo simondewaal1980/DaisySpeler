@@ -24,17 +24,33 @@ class BookmarkRepository(file: File) {
   @Synchronized
   fun recordStart(bookId: String, position: BookPosition, now: Long = System.currentTimeMillis()) {
     val current = _sessions.value
-    val active = current.lastOrNull { it.bookId == bookId && it.stop == null }
-    if (active != null) return
-    val point = position.toBookmarkPoint(now)
+    val activeIndex = current.indexOfLast { it.bookId == bookId && it.stop == null }
+    if (activeIndex >= 0) {
+      val active = current[activeIndex]
+      if (now - active.start.createdAtEpochMs < MAX_ACTIVE_SESSION_MS) return
+
+      // The app was probably killed before it could close this session. Close it at its start
+      // so it cannot swallow the new listening session, then create a fresh one.
+      val closed = active.copy(stop = active.start.copy(reason = "STALE"))
+      val updated = current.toMutableList()
+      updated[activeIndex] = closed
+      val session =
+        BookmarkSession(
+          id = UUID.randomUUID().toString(),
+          bookId = bookId,
+          start = position.toBookmarkPoint(now),
+        )
+      persist(updated + session)
+      return
+    }
+
     val session =
       BookmarkSession(
         id = UUID.randomUUID().toString(),
         bookId = bookId,
-        start = point,
+        start = position.toBookmarkPoint(now),
       )
-    val updated = current + session
-    persist(updated)
+    persist(current + session)
   }
 
   @Synchronized
@@ -148,5 +164,8 @@ class BookmarkRepository(file: File) {
     /** Only the five most recent listening sessions per book are kept. */
     const val MAX_AUTOMATIC_PER_BOOK = 5
     const val MAX_MANUAL_PER_BOOK = 200
+
+    /** A session that stays open longer than this is treated as left behind by a crash. */
+    const val MAX_ACTIVE_SESSION_MS = 12 * 60 * 60 * 1000L
   }
 }

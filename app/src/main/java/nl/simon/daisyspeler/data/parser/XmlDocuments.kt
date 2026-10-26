@@ -11,6 +11,8 @@ object XmlDocuments {
       DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = false
         isExpandEntityReferences = false
+        runCatching { isXIncludeAware = false }
+        runCatching { setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true) }
         runCatching {
           setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
         }
@@ -19,6 +21,12 @@ object XmlDocuments {
         }
         runCatching {
           setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        }
+        runCatching {
+          setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "")
+        }
+        runCatching {
+          setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "")
         }
       }
     val builder = factory.newDocumentBuilder()

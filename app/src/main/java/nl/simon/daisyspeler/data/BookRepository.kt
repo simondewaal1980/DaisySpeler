@@ -2,6 +2,7 @@ package nl.simon.daisyspeler.data
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,6 +22,8 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.security.MessageDigest
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 object BookIds {
   fun fromTreeUri(treeUri: String): String = hash(treeUri)
@@ -40,9 +43,10 @@ class BookRepository(
   private val loader = DaisyBookLoader()
   private val mutex = Mutex()
   private val coverMutex = Mutex()
-  private val cache = mutableMapOf<String, DaisyBook>()
-  private val sourceCache = mutableMapOf<String, BookSource>()
-  private val coverChecked = mutableSetOf<String>()
+  private val cache = ConcurrentHashMap<String, DaisyBook>()
+  private val sourceCache = ConcurrentHashMap<String, BookSource>()
+  private val coverChecked =
+    Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
   private val booksRoot = File(context.filesDir, "books")
   private val coversRoot = File(context.filesDir, "covers")
 
@@ -84,11 +88,19 @@ class BookRepository(
     val id = BookIds.fromZipUri(zipUri.toString())
     withContext(Dispatchers.IO) {
       val temp = File(booksRoot, "$id.tmp")
+      val target = File(booksRoot, id)
+      val backup = File(booksRoot, "$id.backup")
       temp.deleteRecursively()
       if (!temp.mkdirs()) {
         throw IOException("De tijdelijke map voor het ZIP-bestand kon niet worden aangemaakt.")
       }
       try {
+        // Recover a replacement that was interrupted after the old folder was moved aside.
+        if (!target.exists() && backup.exists() && !backup.renameTo(target)) {
+          throw IOException("De vorige uitgepakte boekbestanden konden niet worden hersteld.")
+        }
+        backup.deleteRecursively()
+
         val input = context.contentResolver.openInputStream(zipUri)
           ?: throw FileNotFoundException("Het ZIP-bestand kon niet worden geopend.")
         input.use { ZipBookExtractor(temp).extract(it) }
@@ -96,13 +108,16 @@ class BookRepository(
         val parsedSource = FileBookSource(temp)
         val book = loader.load(parsedSource)
 
-        val target = File(booksRoot, id)
-        if (target.exists() && !target.deleteRecursively()) {
-          throw IOException("De oude uitgepakte boekbestanden konden niet worden verwijderd.")
+        if (target.exists() && !target.renameTo(backup)) {
+          throw IOException("De oude uitgepakte boekbestanden konden niet worden verplaatst.")
         }
         if (!temp.renameTo(target)) {
+          if (backup.exists() && !backup.renameTo(target)) {
+            throw IOException("De oude boekbestanden konden niet worden teruggezet.")
+          }
           throw IOException("De uitgepakte boekbestanden konden niet worden opgeslagen.")
         }
+        backup.deleteRecursively()
 
         val source = FileBookSource(target)
         cache[id] = book
@@ -113,6 +128,9 @@ class BookRepository(
         LoadedBook(id, source, book, target.absolutePath, coverPath)
       } catch (error: Throwable) {
         temp.deleteRecursively()
+        if (!target.exists() && backup.exists()) {
+          backup.renameTo(target)
+        }
         cache.remove(id)
         sourceCache.remove(id)
         throw error
@@ -148,22 +166,35 @@ class BookRepository(
    * behind a SAF permission and may disappear, so they are copied to app-private storage. This
    * also backfills books that were imported before cover support existed.
    */
-  suspend fun ensureCover(entry: LibraryEntry): String? {
-    entry.coverPath?.let { path -> if (File(path).isFile) return path }
-    return coverMutex.withLock {
-      entry.coverPath?.let { path -> if (File(path).isFile) return@withLock path }
+  suspend fun ensureCover(entry: LibraryEntry): String? = withContext(Dispatchers.IO) {
+    entry.coverPath?.let { path -> if (File(path).isFile) return@withContext path }
+
+    coverMutex.withLock {
+      // Another caller may have repaired the cover while this one was waiting.
+      val latest = libraryRepository.get(entry.id) ?: entry
+      latest.coverPath?.let { path ->
+        if (File(path).isFile) return@withLock path
+        libraryRepository.updateCover(entry.id, null)
+        coverChecked.remove(entry.id)
+      }
       if (entry.id in coverChecked) return@withLock null
 
-      val source = sourceForEntry(entry)
-      val fileCover = withContext(Dispatchers.IO) { loader.findCover(source) }
-      val coverPath =
-        cacheCover(entry.id, fileCover, source)
-          ?: cacheEmbeddedCover(entry.id, source, audioPaths(source))
-      coverChecked += entry.id
-      if (coverPath != null) {
+      try {
+        val source = sourceForEntry(latest)
+        val fileCover = loader.findCover(source)
+        val coverPath =
+          cacheCover(entry.id, fileCover, source)
+            ?: cacheEmbeddedCover(entry.id, source, audioPaths(source))
+        coverChecked += entry.id
         libraryRepository.updateCover(entry.id, coverPath)
+        coverPath
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (error: Throwable) {
+        // A temporary SAF/IO failure should not disable cover repair until the next restart.
+        coverChecked.remove(entry.id)
+        throw error
       }
-      coverPath
     }
   }
 
@@ -177,16 +208,19 @@ class BookRepository(
     val extension = ImageFiles.extensionOf(bytes) ?: return@withContext null
     if (!ensureCoversRoot()) return@withContext null
 
-    val target = File(coversRoot, "$bookId-${System.currentTimeMillis()}.$extension")
-    return@withContext try {
-      target.outputStream().use { it.write(bytes) }
-      coversRoot.listFiles { file -> file != target && isCoverFile(file, bookId) }
-        ?.forEach { it.delete() }
-      libraryRepository.updateCover(bookId, target.absolutePath)
-      target.absolutePath
-    } catch (_: Throwable) {
-      target.delete()
-      null
+    coverMutex.withLock {
+      val target =
+        File(coversRoot, "$bookId-${System.currentTimeMillis()}-${System.nanoTime()}.$extension")
+      try {
+        target.outputStream().use { it.write(bytes) }
+        coversRoot.listFiles { file -> file != target && isCoverFile(file, bookId) }
+          ?.forEach { it.delete() }
+        libraryRepository.updateCover(bookId, target.absolutePath)
+        target.absolutePath
+      } catch (_: Throwable) {
+        target.delete()
+        null
+      }
     }
   }
 
@@ -197,7 +231,7 @@ class BookRepository(
     if (extension.isBlank()) return null
     if (!ensureCoversRoot()) return null
 
-    val temp = File(coversRoot, "$bookId.tmp")
+    val temp = File(coversRoot, "$bookId-${System.nanoTime()}.tmp")
     return try {
       source.open(coverPath).use { input ->
         temp.outputStream().use { output -> copyCover(input, output) }
@@ -220,7 +254,7 @@ class BookRepository(
     if (cover.bytes.isEmpty() || cover.bytes.size > MAX_COVER_BYTES) return null
     if (!ensureCoversRoot()) return null
 
-    val temp = File(coversRoot, "$bookId.tmp")
+    val temp = File(coversRoot, "$bookId-${System.nanoTime()}.tmp")
     return try {
       temp.outputStream().use { it.write(cover.bytes) }
       finishCover(bookId, extension, temp)
@@ -254,7 +288,9 @@ class BookRepository(
   private fun ensureCoversRoot(): Boolean = coversRoot.isDirectory || coversRoot.mkdirs()
 
   private fun finishCover(bookId: String, extension: String, temp: File): String? {
-    val target = File(coversRoot, "$bookId.$extension")
+    // A unique name means Compose never keeps showing an old bitmap for a replaced cover.
+    val target =
+      File(coversRoot, "$bookId-${System.currentTimeMillis()}-${System.nanoTime()}.$extension")
     if (temp.length() == 0L) {
       temp.delete()
       return null
@@ -290,13 +326,14 @@ class BookRepository(
    */
   fun deleteLocalFiles(entry: LibraryEntry) {
     coversRoot.listFiles { file -> isCoverFile(file, entry.id) }?.forEach { it.delete() }
+    File(booksRoot, "${entry.id}.tmp").deleteRecursively()
+    File(booksRoot, "${entry.id}.backup").deleteRecursively()
     val localDir = entry.localDir ?: return
     val root = booksRoot.canonicalFile
     val target = File(localDir).canonicalFile
     if (target != root && target.path.startsWith(root.path + File.separator)) {
       target.deleteRecursively()
     }
-    File(booksRoot, "${entry.id}.tmp").deleteRecursively()
   }
 
   private fun sourceFor(entry: LibraryEntry): BookSource {

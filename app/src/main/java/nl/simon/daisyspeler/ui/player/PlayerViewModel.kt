@@ -13,6 +13,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +32,9 @@ import nl.simon.daisyspeler.data.storage.BookmarkSession
 import nl.simon.daisyspeler.data.storage.ManualBookmark
 import nl.simon.daisyspeler.playback.DaisyPlaybackService
 import nl.simon.daisyspeler.playback.PlaybackCommands
+import nl.simon.daisyspeler.playback.PlaybackLoadState
 import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
+import java.io.File
 import kotlin.math.max
 
 data class PlaybackUiState(
@@ -42,6 +45,7 @@ data class PlaybackUiState(
   val heading: String? = null,
   val page: String? = null,
   val speed: Float = PlaybackSpeedOptions.DEFAULT_SPEED,
+  val loadState: PlaybackLoadState = PlaybackLoadState.IDLE,
 )
 
 class PlayerViewModel(
@@ -75,24 +79,44 @@ class PlayerViewModel(
   private var controller: MediaController? = null
   private var controllerFuture: ListenableFuture<MediaController>? = null
   private var tickerJob: Job? = null
+  private var loadTimeoutJob: Job? = null
   private var loadRequested = false
   private var pendingPlay = false
   private var reconnectAttempts = 0
+  private var connectionGeneration = 0
+  private var loadState = PlaybackLoadState.IDLE
 
   private val controllerListener =
     object : MediaController.Listener {
       override fun onDisconnected(controller: MediaController) {
         if (this@PlayerViewModel.controller !== controller) return
+        cancelLoadTimeout()
         controller.removeListener(playerListener)
+        controller.release()
         this@PlayerViewModel.controller = null
+        controllerFuture = null
         loadRequested = false
+        loadState = PlaybackLoadState.IDLE
+        _playback.value =
+          _playback.value.copy(isPlaying = false, isLoading = false, loadState = loadState)
+        _error.value = "Verbinding met de speler verbroken. Opnieuw proberen…"
         scheduleReconnect()
+      }
+
+      override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+        if (this@PlayerViewModel.controller !== controller) return
+        applySessionExtras(extras)
       }
     }
 
   private val playerListener =
     object : Player.Listener {
-      override fun onIsPlayingChanged(isPlaying: Boolean) = updatePlaybackState()
+      override fun onIsPlayingChanged(isPlaying: Boolean) {
+        if (isPlaying && loadState == PlaybackLoadState.ERROR) {
+          loadState = PlaybackLoadState.READY
+        }
+        updatePlaybackState()
+      }
 
       override fun onPlaybackStateChanged(playbackState: Int) = updatePlaybackState()
 
@@ -103,6 +127,10 @@ class PlayerViewModel(
         updatePlaybackState()
 
       override fun onPlayerError(error: PlaybackException) {
+        cancelLoadTimeout()
+        loadState = PlaybackLoadState.ERROR
+        _playback.value =
+          _playback.value.copy(isLoading = false, loadState = loadState)
         _error.value = "Afspelen mislukt: ${error.message}"
       }
     }
@@ -116,36 +144,51 @@ class PlayerViewModel(
 
   private fun ensureCover() {
     val entry = container.libraryRepository.get(bookId) ?: return
-    if (entry.coverPath != null) return
     viewModelScope.launch {
-      runCatching { container.bookRepository.ensureCover(entry) }
-        .onSuccess { path -> if (path != null) _coverPath.value = path }
+      try {
+        val path = container.bookRepository.ensureCover(entry)
+        _coverPath.value =
+          path ?: container.libraryRepository.get(bookId)?.coverPath?.takeIf { File(it).isFile }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Throwable) {
+        // The player can still be used without a cover.
+      }
     }
   }
 
   /** Picks up a cover that was chosen while the player was in the background. */
   fun refreshCover() {
-    container.libraryRepository.get(bookId)?.coverPath?.let { _coverPath.value = it }
+    val path = container.libraryRepository.get(bookId)?.coverPath?.takeIf { File(it).isFile }
+    _coverPath.value = path
+    if (path == null) ensureCover()
   }
 
   private fun loadBook() {
     viewModelScope.launch {
-      runCatching {
-          val book = container.bookRepository.loadById(bookId)
-          _book.value = book
-          _playback.value =
-            _playback.value.copy(durationMs = book.totalDurationMs, isLoading = true)
-          maybeRequestLoad()
-        }
-        .onFailure {
-          _error.value = it.message ?: "Boek kon niet worden geopend."
-          _playback.value = _playback.value.copy(isLoading = false)
-        }
+      try {
+        val book = container.bookRepository.loadById(bookId)
+        _book.value = book
+        _playback.value =
+          _playback.value.copy(durationMs = book.totalDurationMs, isLoading = true)
+        maybeRequestLoad()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (error: Throwable) {
+        cancelLoadTimeout()
+        loadState = PlaybackLoadState.ERROR
+        _playback.value =
+          _playback.value.copy(isLoading = false, loadState = loadState)
+        _error.value = error.message ?: "Boek kon niet worden geopend."
+      }
     }
   }
 
   private fun connectController() {
     val context = container.context
+    val generation = ++connectionGeneration
+    controllerFuture?.let { MediaController.releaseFuture(it) }
+    controllerFuture = null
     val token =
       SessionToken(context, ComponentName(context, DaisyPlaybackService::class.java))
     val future =
@@ -155,23 +198,32 @@ class PlayerViewModel(
     controllerFuture = future
     future.addListener(
       {
+        if (generation != connectionGeneration) {
+          runCatching { future.get().release() }
+          return@addListener
+        }
         runCatching { future.get() }
           .onSuccess { connected ->
+            if (generation != connectionGeneration) {
+              connected.release()
+              return@onSuccess
+            }
             reconnectAttempts = 0
             controller = connected
             connected.addListener(playerListener)
+            applySessionExtras(connected.sessionExtras)
             maybeRequestLoad()
             startTicker()
-            viewModelScope.launch {
-              delay(20_000)
-              val current = controller
-              if (current != null && current.mediaItemCount == 0) {
-                _playback.value = _playback.value.copy(isLoading = false)
-                _error.value = "De speler kon het boek niet laden."
-              }
-            }
           }
-          .onFailure { _error.value = "Kon de speler niet starten: ${it.message}" }
+          .onFailure { error ->
+            if (generation != connectionGeneration) return@onFailure
+            cancelLoadTimeout()
+            loadState = PlaybackLoadState.ERROR
+            _playback.value =
+              _playback.value.copy(isLoading = false, loadState = loadState)
+            _error.value = "Kon de speler niet starten: ${error.message}"
+            scheduleReconnect()
+          }
       },
       ContextCompat.getMainExecutor(context),
     )
@@ -179,13 +231,48 @@ class PlayerViewModel(
 
   private fun scheduleReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      cancelLoadTimeout()
+      loadState = PlaybackLoadState.ERROR
+      _playback.value =
+        _playback.value.copy(isLoading = false, loadState = loadState)
       _error.value = "De speler is de verbinding kwijtgeraakt."
       return
     }
     reconnectAttempts++
     viewModelScope.launch {
       delay(500)
-      connectController()
+      if (controller == null) connectController()
+    }
+  }
+
+  private fun applySessionExtras(extras: Bundle?) {
+    val rawState = extras?.getString(PlaybackCommands.KEY_LOAD_STATE) ?: return
+    val state = PlaybackLoadState.entries.firstOrNull { it.name == rawState } ?: return
+    val statusBookId = extras.getString(PlaybackCommands.KEY_LOAD_BOOK_ID)
+    if (statusBookId != null && statusBookId != bookId) return
+
+    loadState = state
+    when (state) {
+      PlaybackLoadState.LOADING -> {
+        cancelLoadTimeout()
+        _playback.value = _playback.value.copy(isLoading = true, loadState = state)
+      }
+      PlaybackLoadState.READY -> {
+        cancelLoadTimeout()
+        _playback.value = _playback.value.copy(isLoading = false, loadState = state)
+      }
+      PlaybackLoadState.ERROR -> {
+        cancelLoadTimeout()
+        val message =
+          extras.getString(PlaybackCommands.KEY_LOAD_ERROR) ?: "Boek kon niet worden geladen."
+        _playback.value =
+          _playback.value.copy(isLoading = false, loadState = state)
+        _error.value = message
+      }
+      PlaybackLoadState.IDLE -> {
+        cancelLoadTimeout()
+        _playback.value = _playback.value.copy(isLoading = false, loadState = state)
+      }
     }
   }
 
@@ -193,13 +280,58 @@ class PlayerViewModel(
     val controller = controller ?: return
     if (_book.value == null) return
     if (loadRequested && !force) return
+    if (!force &&
+      controller.mediaItemCount > 0 &&
+      controller.currentMediaItem?.mediaId?.startsWith("$bookId:") == true
+    ) {
+      loadState = PlaybackLoadState.READY
+      _playback.value = _playback.value.copy(isLoading = false, loadState = loadState)
+      return
+    }
     loadRequested = true
+    loadState = PlaybackLoadState.LOADING
+    _playback.value = _playback.value.copy(isLoading = true, loadState = loadState)
     val args =
       Bundle().apply {
         putString(PlaybackCommands.KEY_BOOK_ID, bookId)
       }
-    controller.sendCustomCommand(SessionCommand(PlaybackCommands.LOAD_BOOK, Bundle.EMPTY), args)
+    val sent =
+      runCatching {
+          controller.sendCustomCommand(SessionCommand(PlaybackCommands.LOAD_BOOK, Bundle.EMPTY), args)
+        }
+        .onFailure { error ->
+          cancelLoadTimeout()
+          loadState = PlaybackLoadState.ERROR
+          _playback.value =
+            _playback.value.copy(isLoading = false, loadState = loadState)
+          _error.value = "Kon het boek niet laden: ${error.message}"
+        }
+        .isSuccess
+    if (sent) startLoadTimeout()
     updatePlaybackState()
+  }
+
+  private fun startLoadTimeout() {
+    cancelLoadTimeout()
+    loadTimeoutJob =
+      viewModelScope.launch {
+        delay(LOAD_TIMEOUT_MS)
+        val current = controller ?: return@launch
+        if (current.mediaItemCount == 0 &&
+          loadState != PlaybackLoadState.READY &&
+          loadState != PlaybackLoadState.ERROR
+        ) {
+          loadState = PlaybackLoadState.ERROR
+          _playback.value =
+            _playback.value.copy(isLoading = false, loadState = loadState)
+          _error.value = "De speler kon het boek niet laden."
+        }
+      }
+  }
+
+  private fun cancelLoadTimeout() {
+    loadTimeoutJob?.cancel()
+    loadTimeoutJob = null
   }
 
   private fun startTicker() {
@@ -228,12 +360,13 @@ class PlayerViewModel(
     _playback.value =
       PlaybackUiState(
         isPlaying = controller.isPlaying,
-        isLoading = !mediaReady,
+        isLoading = !mediaReady && loadState != PlaybackLoadState.ERROR,
         globalMs = global,
         durationMs = book.totalDurationMs,
         heading = heading,
         page = page,
         speed = controller.playbackParameters.speed,
+        loadState = loadState,
       )
     maybeStartPendingPlay()
   }
@@ -244,6 +377,10 @@ class PlayerViewModel(
    */
   private fun maybeStartPendingPlay() {
     if (!pendingPlay) return
+    if (loadState == PlaybackLoadState.ERROR) {
+      pendingPlay = false
+      return
+    }
     val controller = controller ?: return
     if (controller.mediaItemCount == 0) return
     pendingPlay = false
@@ -306,9 +443,16 @@ class PlayerViewModel(
     updatePlaybackState()
   }
 
-  fun addBookmark(note: String? = null): Boolean {
+  fun addBookmark(note: String? = null): Boolean =
+    addBookmarkAt(_playback.value.globalMs, note)
+
+  /**
+   * Adds a manual bookmark at the position the user saw when opening the dialog. Using the
+   * current playback position here would move the bookmark while the note is being typed.
+   */
+  fun addBookmarkAt(positionMs: Long, note: String? = null): Boolean {
     val book = _book.value ?: return false
-    val (segment, offset) = book.segmentAtGlobal(_playback.value.globalMs) ?: return false
+    val (segment, offset) = book.segmentAtGlobal(positionMs) ?: return false
     val position = book.positionAt(segment.index, offset) ?: return false
     container.bookmarkRepository.addManualBookmark(bookId, position, note)
     return true
@@ -395,15 +539,23 @@ class PlayerViewModel(
   }
 
   override fun onCleared() {
+    connectionGeneration++
     tickerJob?.cancel()
-    controller?.removeListener(playerListener)
-    controllerFuture?.let { MediaController.releaseFuture(it) }
+    cancelLoadTimeout()
+    val current = controller
     controller = null
+    if (current != null) {
+      current.removeListener(playerListener)
+      current.release()
+    } else {
+      controllerFuture?.let { MediaController.releaseFuture(it) }
+    }
     controllerFuture = null
     super.onCleared()
   }
 
   private companion object {
     const val MAX_RECONNECT_ATTEMPTS = 5
+    const val LOAD_TIMEOUT_MS = 20_000L
   }
 }

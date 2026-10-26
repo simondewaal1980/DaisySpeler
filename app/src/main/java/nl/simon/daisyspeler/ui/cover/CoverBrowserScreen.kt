@@ -130,6 +130,9 @@ fun CoverBrowserScreen(
 
           override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
             canGoBack = view?.canGoBack() == true
+            if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+              currentUrl = url
+            }
           }
         }
       setOnLongClickListener {
@@ -328,7 +331,14 @@ private class CoverWebView(context: Context) : WebView(context) {
       lastTouchX = event.x
       lastTouchY = event.y
     }
-    return super.onTouchEvent(event)
+    val handled = super.onTouchEvent(event)
+    if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
+    return handled
+  }
+
+  override fun performClick(): Boolean {
+    super.performClick()
+    return true
   }
 }
 

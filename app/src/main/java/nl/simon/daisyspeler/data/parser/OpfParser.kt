@@ -127,7 +127,8 @@ object OpfParser {
         title = firstText("dc:title", "title"),
         author = firstText("dc:creator", "creator"),
         language = firstText("dc:language", "language"),
-        smilSpine = (spinePaths + smilItems.map { it.path }).distinct(),
+        smilSpine =
+          (if (spinePaths.isNotEmpty()) spinePaths else smilItems.map { it.path }).distinct(),
         nccPath = nccPath,
         coverPath = coverPath,
       )

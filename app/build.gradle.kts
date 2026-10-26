@@ -11,8 +11,8 @@ android {
         applicationId = "nl.simon.daisyspeler"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "5.0"
+        versionCode = 7
+        versionName = "5.1"
     }
 
     buildTypes {

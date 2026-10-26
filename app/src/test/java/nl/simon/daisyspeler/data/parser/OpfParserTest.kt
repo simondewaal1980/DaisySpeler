@@ -68,6 +68,32 @@ class OpfParserTest {
   }
 
   @Test
+  fun `spine does not include smil files outside the itemref list`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/book.opf" to
+            """
+            <package>
+              <metadata/>
+              <manifest>
+                <item id="s1" href="s1.smil" media-type="application/smil"/>
+                <item id="s2" href="s2.smil" media-type="application/smil"/>
+              </manifest>
+              <spine>
+                <itemref idref="s2"/>
+              </spine>
+            </package>
+            """.trimIndent(),
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertEquals(listOf("book/s2.smil"), data?.smilSpine)
+  }
+
+  @Test
   fun `finds cover image declared in opf metadata`() {
     val source =
       MemoryBookSource.fromText(

@@ -39,8 +39,12 @@ object PathUtils {
     val withoutQuery = trimmed.substringBefore('?')
     val path = withoutQuery.substringBefore('#')
     val fragment = withoutQuery.substringAfter('#', "").takeIf { it.isNotEmpty() }
+    // URLDecoder treats '+' as a space (form encoding). In a URL path '+' is a literal
+    // character, so protect it before decoding.
     val decoded =
-      runCatching { URLDecoder.decode(path, Charsets.UTF_8.name()) }.getOrDefault(path)
+      runCatching {
+        URLDecoder.decode(path.replace("+", "%2B"), Charsets.UTF_8.name())
+      }.getOrDefault(path)
     if (decoded.isBlank()) return null
     return join(baseDir, decoded) to fragment
   }
