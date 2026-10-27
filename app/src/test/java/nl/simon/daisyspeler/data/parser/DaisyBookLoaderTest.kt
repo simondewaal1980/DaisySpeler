@@ -291,6 +291,42 @@ class DaisyBookLoaderTest {
     assertEquals(1_000L, book.totalDurationMs)
   }
 
+  @Test
+  fun `fills a missing clip end with the next start in the same file`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head><meta name="dc:title" content="Zonder eindtijd"/></head><body>
+              <h1><a href="s.smil#p1">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent(),
+          "book/s.smil" to
+            """
+            <smil><body>
+              <par>
+                <text src="ncc.html#p1" id="p1"/>
+                <audio src="a.mp3" clip-begin="npt=0s"/>
+              </par>
+              <par>
+                <text src="ncc.html#p2" id="p2"/>
+                <audio src="a.mp3" clip-begin="npt=1s" clip-end="npt=2s"/>
+              </par>
+            </body></smil>
+            """.trimIndent(),
+          "book/a.mp3" to "",
+        )
+      )
+
+    val book = DaisyBookLoader().load(source)
+
+    assertEquals(1, book.segments.size)
+    assertEquals(0L, book.segments.single().clipStartMs)
+    assertEquals(2_000L, book.segments.single().clipEndMs)
+    assertEquals(2_000L, book.totalDurationMs)
+  }
+
   private fun sampleBook(): MemoryBookSource =
     MemoryBookSource.fromText(
       mapOf(
