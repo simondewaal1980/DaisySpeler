@@ -156,8 +156,9 @@ class AudiobookDownloads(
             continue
           }
 
-          removePendingDownload(rawId)
           if (info.status != DownloadManager.STATUS_SUCCESSFUL) {
+            // A failed DownloadManager transfer is terminal; retrying it would fail again.
+            removePendingDownload(rawId)
             results += AudiobookImportResult.Failed(info.fileName, info.failureReason)
             continue
           }
@@ -166,11 +167,13 @@ class AudiobookDownloads(
             runCatching { manager.getUriForDownloadedFile(id) }.getOrNull()
               ?: info.localUri?.let(Uri::parse)
           if (uri == null) {
+            removePendingDownload(rawId)
             results += AudiobookImportResult.Failed(info.fileName, "Het bestand is niet leesbaar.")
             continue
           }
 
           if (!isZipArchive(uri)) {
+            removePendingDownload(rawId)
             results += AudiobookImportResult.NotAnArchive(info.fileName)
             continue
           }
@@ -181,9 +184,15 @@ class AudiobookDownloads(
             } catch (cancelled: CancellationException) {
               throw cancelled
             } catch (error: Throwable) {
+              // Keep a transiently failing import pending so the user can retry it, but stop
+              // retrying after a few attempts to avoid an endless error loop.
+              if (recordImportAttempt(rawId) >= MAX_IMPORT_ATTEMPTS) {
+                removePendingDownload(rawId)
+              }
               results += AudiobookImportResult.Failed(info.fileName, error.message)
               continue
             }
+          removePendingDownload(rawId)
           results += AudiobookImportResult.Imported(loaded.book.title.ifBlank { info.fileName })
         }
         results
@@ -325,17 +334,54 @@ class AudiobookDownloads(
     val ids = pendingDownloads().toMutableSet()
     ids += id.toString()
     preferences.edit().putStringSet(KEY_PENDING_DOWNLOADS, ids).apply()
+    clearImportAttempts(id.toString())
   }
 
   @Synchronized
   private fun removePendingDownload(id: String) {
     val ids = pendingDownloads().toMutableSet()
-    if (!ids.remove(id)) return
-    preferences.edit().putStringSet(KEY_PENDING_DOWNLOADS, ids).apply()
+    if (ids.remove(id)) {
+      preferences.edit().putStringSet(KEY_PENDING_DOWNLOADS, ids).apply()
+    }
+    clearImportAttempts(id)
   }
 
   private fun pendingDownloads(): Set<String> =
     preferences.getStringSet(KEY_PENDING_DOWNLOADS, emptySet()).orEmpty().toSet()
+
+  @Synchronized
+  private fun recordImportAttempt(id: String): Int {
+    val attempts = importAttempts()
+    val next = (attempts[id] ?: 0) + 1
+    attempts[id] = next
+    saveImportAttempts(attempts)
+    return next
+  }
+
+  private fun importAttempts(): MutableMap<String, Int> =
+    preferences
+      .getStringSet(KEY_IMPORT_ATTEMPTS, emptySet())
+      .orEmpty()
+      .mapNotNull { entry ->
+        val id = entry.substringBefore(':', "")
+        val count = entry.substringAfter(':', "").toIntOrNull()
+        if (id.isBlank() || count == null) null else id to count
+      }
+      .toMap()
+      .toMutableMap()
+
+  @Synchronized
+  private fun clearImportAttempts(id: String) {
+    val attempts = importAttempts()
+    if (attempts.remove(id) != null) saveImportAttempts(attempts)
+  }
+
+  private fun saveImportAttempts(attempts: Map<String, Int>) {
+    preferences
+      .edit()
+      .putStringSet(KEY_IMPORT_ATTEMPTS, attempts.map { (id, count) -> "$id:$count" }.toSet())
+      .apply()
+  }
 
   private data class DownloadInfo(
     val status: Int,
@@ -347,6 +393,8 @@ class AudiobookDownloads(
   companion object {
     private const val PREFS_NAME = "daisy_downloads"
     private const val KEY_PENDING_DOWNLOADS = "pending_downloads"
+    private const val KEY_IMPORT_ATTEMPTS = "import_attempts"
+    private const val MAX_IMPORT_ATTEMPTS = 3
     private const val MAX_NAME_ATTEMPTS = 99
     private const val FOLDER_MARKER_NAME = "daisyspeler-map.txt"
   }
