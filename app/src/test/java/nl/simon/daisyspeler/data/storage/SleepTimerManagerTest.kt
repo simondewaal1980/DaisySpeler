@@ -31,11 +31,13 @@ class SleepTimerManagerTest {
     assertFalse(manager.isExpired(now = startedAt + 899_999L))
     assertTrue(manager.isExpired(now = startedAt + 900_000L))
 
+    manager.flush()
     val reloaded = SleepTimerManager(file)
     assertEquals("book", reloaded.state.value?.bookId)
 
     manager.cancel()
     assertNull(manager.state.value)
+    manager.flush()
     assertNull(SleepTimerManager(file).state.value)
   }
 }

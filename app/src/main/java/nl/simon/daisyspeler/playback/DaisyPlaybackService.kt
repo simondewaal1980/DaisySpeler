@@ -28,6 +28,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -36,7 +37,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import nl.simon.daisyspeler.DaisyApplication
 import nl.simon.daisyspeler.MainActivity
 import nl.simon.daisyspeler.R
@@ -46,6 +49,7 @@ import nl.simon.daisyspeler.data.storage.BookmarkRepository
 import nl.simon.daisyspeler.data.storage.LibraryRepository
 import nl.simon.daisyspeler.data.storage.SleepTimerManager
 import nl.simon.daisyspeler.data.source.BookSource
+import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(UnstableApi::class)
 class DaisyPlaybackService : MediaSessionService() {
@@ -58,6 +62,7 @@ class DaisyPlaybackService : MediaSessionService() {
   @OptIn(ExperimentalCoroutinesApi::class)
   private val storageScope =
     CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+  private val pendingStorageJobs = ConcurrentHashMap.newKeySet<Job>()
   private lateinit var player: ExoPlayer
   private lateinit var libraryRepository: LibraryRepository
   private lateinit var bookmarkRepository: BookmarkRepository
@@ -77,6 +82,13 @@ class DaisyPlaybackService : MediaSessionService() {
    * starting playback, so a tap on play is never silently ignored.
    */
   private var pendingPlayBookId: String? = null
+
+  /**
+   * Set when playback is resumed from a media controller (for example the notification after
+   * process death). The session starts playback itself, so the normal play path does not run and
+   * the start bookmark is created on the first isPlaying transition instead.
+   */
+  private var pendingResumeStart = false
 
   override fun onCreate() {
     super.onCreate()
@@ -150,12 +162,25 @@ class DaisyPlaybackService : MediaSessionService() {
       if (loadingBookId == null) recordStopNow("STOP")
     } finally {
       loadJob?.cancel()
-      storageScope.cancel()
       serviceScope.cancel()
+      // Let bookmarks and the sleep timer that were already queued finish before teardown.
+      drainStorageWrites()
+      sleepTimerManager.flush()
+      storageScope.cancel()
       mediaSession?.release()
       mediaSession = null
       player.release()
       super.onDestroy()
+    }
+  }
+
+  private fun drainStorageWrites() {
+    val jobs = pendingStorageJobs.toList()
+    if (jobs.isEmpty()) return
+    runBlocking {
+      withTimeoutOrNull(STORAGE_DRAIN_TIMEOUT_MS) {
+        jobs.forEach { it.join() }
+      }
     }
   }
 
@@ -164,7 +189,9 @@ class DaisyPlaybackService : MediaSessionService() {
       while (isActive) {
         val timer = sleepTimerManager.state.value
         if (timer != null) {
-          val bookId = loadedBookId ?: loadingBookId
+          // While a new book is loading, the old book is no longer the target. Prefer the
+          // loading book so a timer that was just set for it is not cancelled immediately.
+          val bookId = loadingBookId ?: loadedBookId
           if (bookId != null && timer.bookId != bookId) {
             runCatching { sleepTimerManager.cancel() }
               .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
@@ -224,7 +251,9 @@ class DaisyPlaybackService : MediaSessionService() {
         if (player.isPlaying) {
           saveLastPosition()
         }
-        delay(10_000)
+        // A slower interval means fewer full library JSON writes. Pausing, seeking and
+        // stopping still save the position immediately through the player listener.
+        delay(POSITION_SAVE_INTERVAL_MS)
       }
     }
   }
@@ -250,6 +279,7 @@ class DaisyPlaybackService : MediaSessionService() {
     }
 
     loadJob?.cancel()
+    pendingResumeStart = false
     loadingBookId = bookId
     publishLoadState(PlaybackLoadState.LOADING, bookId)
     loadJob =
@@ -327,10 +357,12 @@ class DaisyPlaybackService : MediaSessionService() {
   private fun stopForBookSwitch() {
     if (loadedBookId == null && loadingBookId == null) return
 
+    val cachedBookIds = listOfNotNull(loadedBookId, loadingBookId).distinct()
     if (loadedBookId != null) {
       pausePlayback(reason = STOP_REASON_BOOK_SWITCH)
     }
     pendingPlayBookId = null
+    pendingResumeStart = false
     loadJob?.cancel()
     loadJob = null
     loadingBookId = null
@@ -338,6 +370,8 @@ class DaisyPlaybackService : MediaSessionService() {
     player.clearMediaItems()
     loadedBook = null
     loadedBookId = null
+    // Free parsed books and SAF file indexes when the player is no longer using them.
+    cachedBookIds.forEach(bookRepository::forget)
     if (sleepTimerManager.state.value != null) {
       runCatching { sleepTimerManager.cancel() }
         .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
@@ -371,6 +405,7 @@ class DaisyPlaybackService : MediaSessionService() {
       playbackPrefs.edit().remove(KEY_LAST_BOOK_ID).apply()
     }
     if (pendingPlayBookId == bookId) pendingPlayBookId = null
+    pendingResumeStart = false
     if (sleepTimerManager.state.value?.bookId == bookId) {
       runCatching { sleepTimerManager.cancel() }
         .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
@@ -488,9 +523,13 @@ class DaisyPlaybackService : MediaSessionService() {
   }
 
   private fun persist(description: String, block: suspend () -> Unit) {
-    storageScope.launch {
-      runCatching { block() }.onFailure { Log.e(TAG, description, it) }
-    }
+    val job =
+      storageScope.launch(start = CoroutineStart.LAZY) {
+        runCatching { block() }.onFailure { Log.e(TAG, description, it) }
+      }
+    pendingStorageJobs += job
+    job.invokeOnCompletion { pendingStorageJobs.remove(job) }
+    job.start()
   }
 
   private fun togglePlayback() {
@@ -532,6 +571,7 @@ class DaisyPlaybackService : MediaSessionService() {
 
   private fun pausePlayback(reason: String = "PAUSE") {
     pendingPlayBookId = null
+    pendingResumeStart = false
     cancelSleepFade()
     recordStop(reason)
     player.pause()
@@ -547,13 +587,18 @@ class DaisyPlaybackService : MediaSessionService() {
   private val playerListener =
     object : Player.Listener {
       override fun onIsPlayingChanged(isPlaying: Boolean) {
-        // Bookmarks are only created by explicit play/pause actions (button, media key or
-        // sleep timer). Save the resume position here, without creating a bookmark.
-        if (!isPlaying) {
-          saveLastPosition()
-          // Undo a (partially) faded out volume after the sleep timer.
-          player.volume = 1f
+        // Bookmarks are normally created by explicit play/pause actions (button, media key or
+        // sleep timer). A resumed session starts playback internally, so close that gap here.
+        if (isPlaying) {
+          if (pendingResumeStart) {
+            pendingResumeStart = false
+            recordStart()
+          }
+          return
         }
+        saveLastPosition()
+        // Undo a (partially) faded out volume after the sleep timer.
+        player.volume = 1f
       }
 
       override fun onPlaybackStateChanged(playbackState: Int) {
@@ -576,6 +621,7 @@ class DaisyPlaybackService : MediaSessionService() {
 
       override fun onPlayerError(error: PlaybackException) {
         Log.e(TAG, "Playback error", error)
+        pendingResumeStart = false
         recordStop("ERROR")
       }
 
@@ -695,6 +741,7 @@ class DaisyPlaybackService : MediaSessionService() {
           playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, bookId).apply()
           updateSessionIntent()
           publishLoadState(PlaybackLoadState.READY, bookId)
+          pendingResumeStart = true
           future.set(
             MediaSession.MediaItemsWithStartPosition(items, start.first.index, start.second)
           )
@@ -757,6 +804,8 @@ class DaisyPlaybackService : MediaSessionService() {
     private const val KEY_PLAYBACK_SPEED = "playback_speed"
     private const val SLEEP_FADE_DURATION_MS = 3_000L
     private const val SLEEP_FADE_STEP_MS = 100L
+    private const val STORAGE_DRAIN_TIMEOUT_MS = 2_000L
+    private const val POSITION_SAVE_INTERVAL_MS = 30_000L
     private const val STOP_REASON_BOOK_SWITCH = "boekwissel"
 
     /**

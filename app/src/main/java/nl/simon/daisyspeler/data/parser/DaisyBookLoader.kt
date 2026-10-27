@@ -70,46 +70,66 @@ class DaisyBookLoader {
       throw DaisyParseException("Geen leesbare SMIL-bestanden met audio gevonden.")
     }
 
-    val clips = mutableListOf<TimelineClip>()
-    val navIdMap = mutableMapOf<String, TimelineClip>()
-    val firstClipBySmil = mutableMapOf<String, TimelineClip>()
-
+    // Resolve every clip in document order first. A missing clip-end can only be filled in with
+    // the start of a later clip in the same audio file, which requires the complete list.
+    val pendingClips = mutableListOf<PendingClip>()
+    val pendingPars = mutableListOf<PendingPar>()
     for (smil in parsedSmils) {
-      val smilKey = PathUtils.normalize(smil.path).lowercase()
       for (par in smil.pars) {
-        val parClips = mutableListOf<TimelineClip>()
+        val pendingPar = PendingPar(smil.path, par)
         for (audio in par.clips) {
           val actualSource = resolveFile(audio.sourcePath)
           if (actualSource == null) {
             warnings += "Audiobestand ${audio.sourcePath} niet gevonden."
             continue
           }
-          val end = audio.endMs ?: findNextStart(clips, actualSource.path, audio.startMs)
-          if (end == null || end <= audio.startMs) {
-            warnings += "Clip in ${PathUtils.fileName(smil.path)} heeft geen geldige eindtijd."
-            continue
-          }
-          val clip =
-            TimelineClip(
-              smilPath = smil.path,
-              sourcePath = actualSource.path,
-              startMs = audio.startMs,
-              endMs = end,
-            )
-          clips += clip
-          parClips += clip
-          audio.id?.let { navIdMap["$smilKey#$it"] = clip }
+          val pending = PendingClip(smil.path, audio, actualSource.path)
+          pendingPar.clips += pending
+          pendingClips += pending
         }
-        if (parClips.isNotEmpty()) {
-          firstClipBySmil.getOrPut(smilKey) { parClips.first() }
-          for (id in par.elementIds) {
-            navIdMap.putIfAbsent("$smilKey#$id", parClips.first())
-          }
-        }
+        if (pendingPar.clips.isNotEmpty()) pendingPars += pendingPar
       }
     }
 
+    val clips = mutableListOf<TimelineClip>()
+    val timelineByPending = mutableMapOf<PendingClip, TimelineClip>()
+    for ((index, pending) in pendingClips.withIndex()) {
+      val audio = pending.audio
+      val end =
+        audio.endMs ?: findNextStart(pendingClips, index, pending.sourcePath, audio.startMs)
+      if (end == null || end <= audio.startMs) {
+        warnings += "Clip in ${PathUtils.fileName(pending.smilPath)} heeft geen geldige eindtijd."
+        continue
+      }
+      val clip =
+        TimelineClip(
+          smilPath = pending.smilPath,
+          sourcePath = pending.sourcePath,
+          startMs = audio.startMs,
+          endMs = end,
+        )
+      clips += clip
+      timelineByPending[pending] = clip
+    }
+
     if (clips.isEmpty()) throw DaisyParseException("Geen afspeelbare audioclips gevonden.")
+
+    val navIdMap = mutableMapOf<String, TimelineClip>()
+    val firstClipBySmil = mutableMapOf<String, TimelineClip>()
+    for (pendingPar in pendingPars) {
+      val smilKey = PathUtils.normalize(pendingPar.smilPath).lowercase()
+      val parClips = pendingPar.clips.mapNotNull { timelineByPending[it] }
+      if (parClips.isEmpty()) continue
+
+      for (pending in pendingPar.clips) {
+        val clip = timelineByPending[pending] ?: continue
+        pending.audio.id?.let { navIdMap["$smilKey#$it"] = clip }
+      }
+      firstClipBySmil.getOrPut(smilKey) { parClips.first() }
+      for (id in pendingPar.par.elementIds) {
+        navIdMap.putIfAbsent("$smilKey#$id", parClips.first())
+      }
+    }
 
     val segments = buildSegments(clips)
     var trackStart = 0L
@@ -300,16 +320,24 @@ class DaisyBookLoader {
     return result
   }
 
+  /**
+   * Uses the start of a later clip in the same audio file as the end of a clip without
+   * clip-end. DAISY 2.02 normally provides clip-end; this fallback only fills a missing value
+   * and never reuses the end of an earlier clip.
+   */
   private fun findNextStart(
-    previous: List<TimelineClip>,
+    clips: List<PendingClip>,
+    currentIndex: Int,
     sourcePath: String,
     startMs: Long,
   ): Long? {
-    // Look ahead is not possible while streaming; use the end of the source file when known.
-    // DAISY 2.02 normally provides clip-end, so this is only a last-resort fallback.
-    return previous.lastOrNull {
-      it.sourcePath.equals(sourcePath, true) && it.endMs > startMs
-    }?.endMs
+    for (index in currentIndex + 1 until clips.size) {
+      val next = clips[index]
+      if (next.sourcePath.equals(sourcePath, true) && next.audio.startMs > startMs) {
+        return next.audio.startMs
+      }
+    }
+    return null
   }
 
   private fun buildSegments(clips: List<TimelineClip>): List<MutableSegment> {
@@ -380,4 +408,16 @@ class DaisyBookLoader {
   ) {
     var trackStartMs: Long = 0L
   }
+
+  private class PendingClip(
+    val smilPath: String,
+    val audio: ParsedAudioClip,
+    val sourcePath: String,
+  )
+
+  private class PendingPar(
+    val smilPath: String,
+    val par: ParsedPar,
+    val clips: MutableList<PendingClip> = mutableListOf(),
+  )
 }

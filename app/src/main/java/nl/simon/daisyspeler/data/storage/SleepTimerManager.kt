@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 
 object SleepTimerOptions {
   val MINUTES = listOf(15, 30, 45, 60, 75, 90, 105, 120)
@@ -26,13 +28,34 @@ class SleepTimerManager(file: File) {
         startedAtEpochMs = now,
       )
     _state.value = value
-    store.write(SleepTimerData(value))
+    persist(SleepTimerData(value))
   }
 
   @Synchronized
   fun cancel() {
     _state.value = null
-    store.write(SleepTimerData(null))
+    persist(SleepTimerData(null))
+  }
+
+  /**
+   * Writes the timer in the background. The state flow is updated immediately, so the UI and the
+   * playback loop never wait for disk I/O. The single-thread executor keeps writes in order.
+   */
+  private fun persist(data: SleepTimerData) {
+    writeExecutor.execute {
+      runCatching { store.write(data) }
+    }
+  }
+
+  /** Waits until all queued timer writes are done, for tests and controlled shutdown paths. */
+  fun flush() {
+    val latch = CountDownLatch(1)
+    writeExecutor.execute { latch.countDown() }
+    try {
+      latch.await()
+    } catch (interrupted: InterruptedException) {
+      Thread.currentThread().interrupt()
+    }
   }
 
   fun isExpired(now: Long = System.currentTimeMillis()): Boolean {
@@ -43,5 +66,12 @@ class SleepTimerManager(file: File) {
   fun remainingMs(now: Long = System.currentTimeMillis()): Long? {
     val timer = _state.value ?: return null
     return (timer.deadlineEpochMs - now).coerceAtLeast(0L)
+  }
+
+  private companion object {
+    val writeExecutor =
+      Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "sleep-timer-write").apply { isDaemon = true }
+      }
   }
 }

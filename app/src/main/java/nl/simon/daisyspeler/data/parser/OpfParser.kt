@@ -57,7 +57,9 @@ object OpfParser {
               add(
                 OpfManifestItem(
                   id = element.getAttribute("id"),
-                  path = PathUtils.join(baseDir, href),
+                  path =
+                    PathUtils.resolveHref(baseDir, href)?.first
+                      ?: PathUtils.join(baseDir, href),
                   mediaType = element.getAttribute("media-type").lowercase(),
                   properties = element.getAttribute("properties").lowercase(),
                 )

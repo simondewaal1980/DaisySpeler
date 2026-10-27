@@ -68,6 +68,31 @@ class OpfParserTest {
   }
 
   @Test
+  fun `decodes url-encoded manifest paths`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/book.opf" to
+            """
+            <package>
+              <metadata/>
+              <manifest>
+                <item id="s1" href="hoofdstuk%201.smil" media-type="application/smil"/>
+                <item id="cover" href="images/omslag%20groot.jpg" media-type="image/jpeg"/>
+              </manifest>
+              <spine><itemref idref="s1"/></spine>
+            </package>
+            """.trimIndent(),
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertEquals(listOf("book/hoofdstuk 1.smil"), data?.smilSpine)
+    assertEquals("book/images/omslag groot.jpg", data?.coverPath)
+  }
+
+  @Test
   fun `spine does not include smil files outside the itemref list`() {
     val source =
       MemoryBookSource.fromText(
@@ -91,6 +116,33 @@ class OpfParserTest {
     val data = OpfParser.parse(source, "book/book.opf")
 
     assertEquals(listOf("book/s2.smil"), data?.smilSpine)
+  }
+
+  @Test
+  fun `parses an opf file that starts with a utf-8 bom`() {
+    val opf =
+      """
+      <package>
+        <metadata><dc:title>BOM Titel</dc:title></metadata>
+        <manifest>
+          <item id="s1" href="s1.smil" media-type="application/smil"/>
+        </manifest>
+        <spine><itemref idref="s1"/></spine>
+      </package>
+      """.trimIndent()
+    val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+    val source =
+      MemoryBookSource(
+        mapOf(
+          "book/book.opf" to bom + opf.toByteArray(Charsets.UTF_8),
+          "book/s1.smil" to "<smil/>".toByteArray(),
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertEquals("BOM Titel", data?.title)
+    assertEquals(listOf("book/s1.smil"), data?.smilSpine)
   }
 
   @Test

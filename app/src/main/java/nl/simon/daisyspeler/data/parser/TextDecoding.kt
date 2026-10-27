@@ -7,15 +7,21 @@ object TextDecoding {
     Regex("""(?:encoding|charset)\s*=\s*["']?([A-Za-z0-9._-]+)""", RegexOption.IGNORE_CASE)
 
   fun decode(bytes: ByteArray): String {
-    detectCharset(bytes)?.let { charset ->
-      return runCatching { String(bytes, charset) }.getOrElse { String(bytes, Charsets.UTF_8) }
-    }
-    if (isValidUtf8(bytes)) return String(bytes, Charsets.UTF_8)
-    // DAISY 2.02 books are commonly produced on Windows. When a document has no charset
-    // declaration and is not valid UTF-8, windows-1252 gives much better results than UTF-8
-    // with replacement characters.
-    return runCatching { String(bytes, Charset.forName("windows-1252")) }
-      .getOrElse { String(bytes, Charsets.UTF_8) }
+    val decoded =
+      detectCharset(bytes)?.let { charset ->
+        runCatching { String(bytes, charset) }.getOrElse { String(bytes, Charsets.UTF_8) }
+      } ?: if (isValidUtf8(bytes)) {
+        String(bytes, Charsets.UTF_8)
+      } else {
+        // DAISY 2.02 books are commonly produced on Windows. When a document has no charset
+        // declaration and is not valid UTF-8, windows-1252 gives much better results than UTF-8
+        // with replacement characters.
+        runCatching { String(bytes, Charset.forName("windows-1252")) }
+          .getOrElse { String(bytes, Charsets.UTF_8) }
+      }
+    // A decoded BOM is still part of the string. XML parsers reject a BOM character before the
+    // declaration ("Content is not allowed in prolog"), so remove it here for every caller.
+    return decoded.removePrefix("\uFEFF")
   }
 
   private fun isValidUtf8(bytes: ByteArray): Boolean {
