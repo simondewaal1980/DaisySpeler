@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -71,6 +74,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.storage.LibraryEntry
 import nl.simon.daisyspeler.data.storage.LibrarySourceType
+import nl.simon.daisyspeler.data.website.AudiobookSite
 import nl.simon.daisyspeler.playback.DaisyPlaybackService
 import nl.simon.daisyspeler.ui.components.BookCover
 import nl.simon.daisyspeler.ui.theme.DefaultIconSize
@@ -91,12 +95,14 @@ fun LibraryScreen(
   container: AppContainer,
   onOpenBook: (String) -> Unit,
   onOpenCoverBrowser: (String) -> Unit,
+  onOpenBookBrowser: (AudiobookSite) -> Unit,
   onOpenAbout: () -> Unit,
   onExit: () -> Unit,
 ) {
   val viewModel: LibraryViewModel = viewModel { LibraryViewModel(container) }
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val largeIcons by container.uiPreferences.largeIcons.collectAsStateWithLifecycle()
+  val downloadFolder by container.uiPreferences.downloadFolder.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val snackbarHostState = remember { SnackbarHostState() }
   var deleteTarget by remember { mutableStateOf<LibraryEntry?>(null) }
@@ -302,7 +308,12 @@ fun LibraryScreen(
       onDismissRequest = { showAddSheet = false },
       sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
-      Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+      Column(
+        modifier =
+          Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+      ) {
         Text(
           "Boek toevoegen",
           style = MaterialTheme.typography.titleLarge,
@@ -333,6 +344,39 @@ fun LibraryScreen(
           modifier = Modifier.fillMaxWidth(),
         ) {
           Text("ZIP-bestand kiezen")
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(
+          "Of zoek een boek op een website",
+          style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+          "Log in met je eigen account en download het boek. ZIP-bestanden worden " +
+            "automatisch aan de bibliotheek toegevoegd. Downloads komen in " +
+            "Download/$downloadFolder.",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        AudiobookSite.entries.forEach { site ->
+          OutlinedButton(
+            onClick = {
+              showAddSheet = false
+              onOpenBookBrowser(site)
+            },
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Icon(
+              Icons.Default.Language,
+              contentDescription = null,
+              modifier = Modifier.size(scaledIconSize(18.dp)),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(site.title)
+          }
+          Spacer(Modifier.height(8.dp))
         }
         Spacer(Modifier.height(24.dp))
       }
@@ -401,7 +445,7 @@ private fun EmptyLibrary(onAdd: () -> Unit) {
     )
     Spacer(Modifier.height(8.dp))
     Text(
-      "Voeg een uitgepakt DAISY 2.02-boek of een ZIP-bestand toe.",
+      "Voeg een uitgepakt DAISY 2.02-boek, een ZIP-bestand of een boek van een website toe.",
       style = MaterialTheme.typography.bodyMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

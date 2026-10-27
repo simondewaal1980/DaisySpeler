@@ -61,25 +61,10 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     local.update { it.copy(importing = true, error = null) }
     viewModelScope.launch {
       try {
-        val loaded =
-          if (isZip) container.bookRepository.importZip(uri)
-          else container.bookRepository.importTree(uri.toString())
-        val book = loaded.book
-        withContext(Dispatchers.IO) {
-          container.libraryRepository.addOrUpdate(
-            LibraryEntry(
-              id = loaded.id,
-              treeUri = uri.toString(),
-              title = book.title.ifBlank { "Naamloos boek" },
-              author = book.author,
-              durationMs = book.totalDurationMs,
-              tocCount = book.toc.size,
-              addedAtEpochMs = System.currentTimeMillis(),
-              sourceType = if (isZip) LibrarySourceType.ZIP else LibrarySourceType.FOLDER,
-              localDir = loaded.localDir,
-              coverPath = loaded.coverPath,
-            )
-          )
+        if (isZip) {
+          container.bookImporter.importZip(uri)
+        } else {
+          container.bookImporter.importTree(uri)
         }
       } catch (cancelled: CancellationException) {
         throw cancelled

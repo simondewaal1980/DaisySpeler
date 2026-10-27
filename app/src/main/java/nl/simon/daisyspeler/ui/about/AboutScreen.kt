@@ -139,7 +139,9 @@ private fun HelpCard() {
   val tips =
     listOf(
       "Voeg boeken toe met ‘Boek toevoegen’ op de boekenplank: kies een uitgepakte " +
-        "DAISY-map of een ZIP-bestand.",
+        "DAISY-map, een ZIP-bestand of een boek van Passend Lezen of ABC Global Books.",
+      "Boeken die je via de website-browser downloadt, komen in de map Download/audioboeken " +
+        "en worden automatisch toegevoegd zodra het ZIP-bestand binnen is.",
       "Open een boek en tik op de afspeelknop. Met −15 en +30 seconden spring je terug " +
         "of vooruit.",
       "Met ‘Vorige’ en ‘Volgende’ ga je naar een hoofdstuk; ‘Inhoud’ toont de inhoudsopgave.",
