@@ -163,8 +163,9 @@ class DaisyPlaybackService : MediaSessionService() {
     } finally {
       loadJob?.cancel()
       serviceScope.cancel()
-      // Let bookmarks that were already queued finish before tearing down the IO scope.
+      // Let bookmarks and the sleep timer that were already queued finish before teardown.
       drainStorageWrites()
+      sleepTimerManager.flush()
       storageScope.cancel()
       mediaSession?.release()
       mediaSession = null
