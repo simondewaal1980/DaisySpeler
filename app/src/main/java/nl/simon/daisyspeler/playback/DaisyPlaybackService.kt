@@ -171,7 +171,9 @@ class DaisyPlaybackService : MediaSessionService() {
       while (isActive) {
         val timer = sleepTimerManager.state.value
         if (timer != null) {
-          val bookId = loadedBookId ?: loadingBookId
+          // While a new book is loading, the old book is no longer the target. Prefer the
+          // loading book so a timer that was just set for it is not cancelled immediately.
+          val bookId = loadingBookId ?: loadedBookId
           if (bookId != null && timer.bookId != bookId) {
             runCatching { sleepTimerManager.cancel() }
               .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
