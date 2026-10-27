@@ -13,6 +13,7 @@ import android.webkit.CookieManager
 import android.webkit.URLUtil
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -175,11 +176,14 @@ class AudiobookDownloads(
           }
 
           val loaded =
-            runCatching { importer.importZip(uri) }
-              .getOrElse { error ->
-                results += AudiobookImportResult.Failed(info.fileName, error.message)
-                continue
-              }
+            try {
+              importer.importZip(uri)
+            } catch (cancelled: CancellationException) {
+              throw cancelled
+            } catch (error: Throwable) {
+              results += AudiobookImportResult.Failed(info.fileName, error.message)
+              continue
+            }
           results += AudiobookImportResult.Imported(loaded.book.title.ifBlank { info.fileName })
         }
         results

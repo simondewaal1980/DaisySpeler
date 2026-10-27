@@ -217,6 +217,9 @@ class BookRepository(
           ?.forEach { it.delete() }
         libraryRepository.updateCover(bookId, target.absolutePath)
         target.absolutePath
+      } catch (cancelled: CancellationException) {
+        target.delete()
+        throw cancelled
       } catch (_: Throwable) {
         target.delete()
         null

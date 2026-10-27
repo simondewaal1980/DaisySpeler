@@ -2,6 +2,7 @@ package nl.simon.daisyspeler.ui.browser
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -95,17 +96,18 @@ class BookBrowserViewModel(private val container: AppContainer) : ViewModel() {
     _state.value = _state.value.copy(checkingDownloads = true)
     viewModelScope.launch {
       val results =
-        runCatching {
-            container.audiobookDownloads.importCompleted(container.bookImporter)
-          }
-          .getOrElse {
-            _state.value =
-              _state.value.copy(
-                checkingDownloads = false,
-                message = "Gedownloade boeken konden niet worden gecontroleerd.",
-              )
-            return@launch
-          }
+        try {
+          container.audiobookDownloads.importCompleted(container.bookImporter)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Throwable) {
+          _state.value =
+            _state.value.copy(
+              checkingDownloads = false,
+              message = "Gedownloade boeken konden niet worden gecontroleerd.",
+            )
+          return@launch
+        }
       val messages = results.mapNotNull { messageFor(it, folderLabel) }
       _state.value =
         _state.value.copy(
