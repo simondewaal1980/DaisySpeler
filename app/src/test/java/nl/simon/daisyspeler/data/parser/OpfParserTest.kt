@@ -68,6 +68,31 @@ class OpfParserTest {
   }
 
   @Test
+  fun `decodes url-encoded manifest paths`() {
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/book.opf" to
+            """
+            <package>
+              <metadata/>
+              <manifest>
+                <item id="s1" href="hoofdstuk%201.smil" media-type="application/smil"/>
+                <item id="cover" href="images/omslag%20groot.jpg" media-type="image/jpeg"/>
+              </manifest>
+              <spine><itemref idref="s1"/></spine>
+            </package>
+            """.trimIndent(),
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertEquals(listOf("book/hoofdstuk 1.smil"), data?.smilSpine)
+    assertEquals("book/images/omslag groot.jpg", data?.coverPath)
+  }
+
+  @Test
   fun `spine does not include smil files outside the itemref list`() {
     val source =
       MemoryBookSource.fromText(
