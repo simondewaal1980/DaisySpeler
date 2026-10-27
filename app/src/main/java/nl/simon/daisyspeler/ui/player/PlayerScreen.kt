@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -578,7 +579,12 @@ private fun TocSheet(
         modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
       ) {
-        items(visible, key = { "${it.globalMs}-${it.label}-${it.type}-${it.fragment}" }) { nav ->
+        itemsIndexed(
+          visible,
+          key = { index, nav ->
+            "toc-$index-${nav.globalMs}-${nav.smilPath}-${nav.fragment}"
+          },
+        ) { _, nav ->
           Row(
             modifier = Modifier
               .fillMaxWidth()
