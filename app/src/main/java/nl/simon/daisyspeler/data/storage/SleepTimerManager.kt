@@ -47,7 +47,7 @@ class SleepTimerManager(file: File) {
     }
   }
 
-  /** Waits until all queued timer writes are done. Used by tests and shutdown paths. */
+  /** Waits until all queued timer writes are done, for tests and controlled shutdown paths. */
   fun flush() {
     val latch = CountDownLatch(1)
     writeExecutor.execute { latch.countDown() }
