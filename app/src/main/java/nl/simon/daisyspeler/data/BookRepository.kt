@@ -64,14 +64,13 @@ class BookRepository(
 
   suspend fun importTree(treeUri: String): LoadedBook = mutex.withLock {
     val id = BookIds.fromTreeUri(treeUri)
+    // An explicit import must reflect the current contents of the folder. Build a fresh source
+    // and parse it instead of reusing the cache, but only replace the cache after success.
     val source =
-      sourceCache[id]
-        ?: withContext(Dispatchers.IO) {
-          SafBookSource(context, Uri.parse(treeUri)).also { sourceCache[id] = it }
-        }
-    val book =
-      cache[id]
-        ?: withContext(Dispatchers.IO) { loader.load(source) }.also { cache[id] = it }
+      withContext(Dispatchers.IO) { SafBookSource(context, Uri.parse(treeUri)) }
+    val book = withContext(Dispatchers.IO) { loader.load(source) }
+    cache[id] = book
+    sourceCache[id] = source
     val coverPath =
       withContext(Dispatchers.IO) {
         cacheCover(id, book.coverPath, source)
