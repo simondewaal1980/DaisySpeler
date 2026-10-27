@@ -250,7 +250,9 @@ class DaisyPlaybackService : MediaSessionService() {
         if (player.isPlaying) {
           saveLastPosition()
         }
-        delay(10_000)
+        // A slower interval means fewer full library JSON writes. Pausing, seeking and
+        // stopping still save the position immediately through the player listener.
+        delay(POSITION_SAVE_INTERVAL_MS)
       }
     }
   }
@@ -354,6 +356,7 @@ class DaisyPlaybackService : MediaSessionService() {
   private fun stopForBookSwitch() {
     if (loadedBookId == null && loadingBookId == null) return
 
+    val cachedBookIds = listOfNotNull(loadedBookId, loadingBookId).distinct()
     if (loadedBookId != null) {
       pausePlayback(reason = STOP_REASON_BOOK_SWITCH)
     }
@@ -366,6 +369,8 @@ class DaisyPlaybackService : MediaSessionService() {
     player.clearMediaItems()
     loadedBook = null
     loadedBookId = null
+    // Free parsed books and SAF file indexes when the player is no longer using them.
+    cachedBookIds.forEach(bookRepository::forget)
     if (sleepTimerManager.state.value != null) {
       runCatching { sleepTimerManager.cancel() }
         .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
@@ -799,6 +804,7 @@ class DaisyPlaybackService : MediaSessionService() {
     private const val SLEEP_FADE_DURATION_MS = 3_000L
     private const val SLEEP_FADE_STEP_MS = 100L
     private const val STORAGE_DRAIN_TIMEOUT_MS = 2_000L
+    private const val POSITION_SAVE_INTERVAL_MS = 30_000L
     private const val STOP_REASON_BOOK_SWITCH = "boekwissel"
 
     /**

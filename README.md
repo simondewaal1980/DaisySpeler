@@ -67,9 +67,10 @@ wordt verplaatst of verwijderd, kan het boek niet meer worden geopend. Een ZIP
 wordt bij import uitgepakt naar app-eigen opslag; het originele ZIP-bestand
 blijft staan. Als je een ZIP-boek uit de bibliotheek verwijdert, worden de
 uitgepakte bestanden verwijderd. Boekgegevens, bookmarks en de slaaptimer worden
-lokaal in de app opgeslagen. Alleen de coverbrowser gebruikt internet: daarin
-wordt Google Afbeeldingen geopend en wordt de door jou gekozen afbeelding
-gedownload. De rest van de app werkt zonder netwerkverbinding.
+lokaal in de app opgeslagen. De coverbrowser en de boekbrowser gebruiken
+internet: de eerste opent Google Afbeeldingen en downloadt de gekozen afbeelding,
+de tweede opent de boekwebsites en downloadt ZIP-bestanden. De rest van de app
+werkt zonder netwerkverbinding.
 
 ## Bouwen en testen
 

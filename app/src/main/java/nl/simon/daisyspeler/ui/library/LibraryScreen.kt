@@ -112,13 +112,22 @@ fun LibraryScreen(
   val folderPicker =
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
       if (uri != null) {
-        runCatching {
-          context.contentResolver.takePersistableUriPermission(
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        val persisted =
+          runCatching {
+              context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+              )
+            }
+            .isSuccess
+        if (persisted) {
+          viewModel.importTree(uri)
+        } else {
+          viewModel.reportError(
+            "De gekozen map kon geen blijvende leestoegang krijgen. Probeer een andere map " +
+              "of voeg het boek als ZIP-bestand toe."
           )
         }
-        viewModel.importTree(uri)
       }
     }
 

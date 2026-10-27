@@ -159,6 +159,10 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     local.update { it.copy(error = null) }
   }
 
+  fun reportError(message: String) {
+    local.update { it.copy(error = message) }
+  }
+
   fun setSortOrder(order: LibrarySortOrder) {
     if (sortOrder.value == order) return
     sortOrder.value = order
