@@ -296,11 +296,11 @@ fun PlayerScreen(
       },
       onConfirm = { note ->
         val position = bookmarkPositionMs ?: playback.globalMs
-        val added = viewModel.addBookmarkAt(position, note)
         showAddBookmark = false
         bookmarkPositionMs = null
         bookmarkLabel = null
         scope.launch {
+          val added = viewModel.addBookmarkAt(position, note)
           snackbarHostState.showSnackbar(
             if (added) "Bookmark toegevoegd" else "Bookmark kon niet worden toegevoegd"
           )

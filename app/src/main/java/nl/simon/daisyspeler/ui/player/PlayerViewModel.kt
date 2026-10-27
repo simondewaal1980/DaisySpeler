@@ -14,6 +14,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.book.DaisyBook
 import nl.simon.daisyspeler.data.book.NavPoint
@@ -443,35 +445,65 @@ class PlayerViewModel(
     updatePlaybackState()
   }
 
-  fun addBookmark(note: String? = null): Boolean =
+  suspend fun addBookmark(note: String? = null): Boolean =
     addBookmarkAt(_playback.value.globalMs, note)
 
   /**
    * Adds a manual bookmark at the position the user saw when opening the dialog. Using the
    * current playback position here would move the bookmark while the note is being typed.
+   *
+   * The repository writes JSON synchronously, so this runs on the IO dispatcher instead of the
+   * main thread. The caller receives false when the bookmark could not be saved.
    */
-  fun addBookmarkAt(positionMs: Long, note: String? = null): Boolean {
-    val book = _book.value ?: return false
-    val (segment, offset) = book.segmentAtGlobal(positionMs) ?: return false
-    val position = book.positionAt(segment.index, offset) ?: return false
-    container.bookmarkRepository.addManualBookmark(bookId, position, note)
-    return true
-  }
+  suspend fun addBookmarkAt(positionMs: Long, note: String? = null): Boolean =
+    withContext(Dispatchers.IO) {
+      val book = _book.value ?: return@withContext false
+      val (segment, offset) = book.segmentAtGlobal(positionMs) ?: return@withContext false
+      val position = book.positionAt(segment.index, offset) ?: return@withContext false
+      try {
+        container.bookmarkRepository.addManualBookmark(bookId, position, note)
+        true
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Throwable) {
+        false
+      }
+    }
 
   fun removeBookmark(sessionId: String) {
-    container.bookmarkRepository.removeSession(bookId, sessionId)
+    persistBookmarks("Bookmark kon niet worden verwijderd.") {
+      container.bookmarkRepository.removeSession(bookId, sessionId)
+    }
   }
 
   fun removeAllBookmarks() {
-    container.bookmarkRepository.removeSessions(bookId)
+    persistBookmarks("Bookmarks konden niet worden verwijderd.") {
+      container.bookmarkRepository.removeSessions(bookId)
+    }
   }
 
   fun removeManualBookmark(bookmarkId: String) {
-    container.bookmarkRepository.removeManualBookmark(bookId, bookmarkId)
+    persistBookmarks("Bookmark kon niet worden verwijderd.") {
+      container.bookmarkRepository.removeManualBookmark(bookId, bookmarkId)
+    }
   }
 
   fun removeAllManualBookmarks() {
-    container.bookmarkRepository.removeManualBookmarks(bookId)
+    persistBookmarks("Bookmarks konden niet worden verwijderd.") {
+      container.bookmarkRepository.removeManualBookmarks(bookId)
+    }
+  }
+
+  private fun persistBookmarks(errorMessage: String, block: () -> Unit) {
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        block()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Throwable) {
+        _error.value = errorMessage
+      }
+    }
   }
 
   fun seekToBookmark(point: BookmarkPoint) {
