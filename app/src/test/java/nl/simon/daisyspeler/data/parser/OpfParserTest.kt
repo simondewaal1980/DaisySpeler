@@ -94,6 +94,33 @@ class OpfParserTest {
   }
 
   @Test
+  fun `parses an opf file that starts with a utf-8 bom`() {
+    val opf =
+      """
+      <package>
+        <metadata><dc:title>BOM Titel</dc:title></metadata>
+        <manifest>
+          <item id="s1" href="s1.smil" media-type="application/smil"/>
+        </manifest>
+        <spine><itemref idref="s1"/></spine>
+      </package>
+      """.trimIndent()
+    val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+    val source =
+      MemoryBookSource(
+        mapOf(
+          "book/book.opf" to bom + opf.toByteArray(Charsets.UTF_8),
+          "book/s1.smil" to "<smil/>".toByteArray(),
+        )
+      )
+
+    val data = OpfParser.parse(source, "book/book.opf")
+
+    assertEquals("BOM Titel", data?.title)
+    assertEquals(listOf("book/s1.smil"), data?.smilSpine)
+  }
+
+  @Test
   fun `finds cover image declared in opf metadata`() {
     val source =
       MemoryBookSource.fromText(
