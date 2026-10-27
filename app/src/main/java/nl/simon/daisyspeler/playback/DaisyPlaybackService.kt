@@ -28,6 +28,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -36,7 +37,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import nl.simon.daisyspeler.DaisyApplication
 import nl.simon.daisyspeler.MainActivity
 import nl.simon.daisyspeler.R
@@ -46,6 +49,7 @@ import nl.simon.daisyspeler.data.storage.BookmarkRepository
 import nl.simon.daisyspeler.data.storage.LibraryRepository
 import nl.simon.daisyspeler.data.storage.SleepTimerManager
 import nl.simon.daisyspeler.data.source.BookSource
+import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(UnstableApi::class)
 class DaisyPlaybackService : MediaSessionService() {
@@ -58,6 +62,7 @@ class DaisyPlaybackService : MediaSessionService() {
   @OptIn(ExperimentalCoroutinesApi::class)
   private val storageScope =
     CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+  private val pendingStorageJobs = ConcurrentHashMap.newKeySet<Job>()
   private lateinit var player: ExoPlayer
   private lateinit var libraryRepository: LibraryRepository
   private lateinit var bookmarkRepository: BookmarkRepository
@@ -157,12 +162,24 @@ class DaisyPlaybackService : MediaSessionService() {
       if (loadingBookId == null) recordStopNow("STOP")
     } finally {
       loadJob?.cancel()
-      storageScope.cancel()
       serviceScope.cancel()
+      // Let bookmarks that were already queued finish before tearing down the IO scope.
+      drainStorageWrites()
+      storageScope.cancel()
       mediaSession?.release()
       mediaSession = null
       player.release()
       super.onDestroy()
+    }
+  }
+
+  private fun drainStorageWrites() {
+    val jobs = pendingStorageJobs.toList()
+    if (jobs.isEmpty()) return
+    runBlocking {
+      withTimeoutOrNull(STORAGE_DRAIN_TIMEOUT_MS) {
+        jobs.forEach { it.join() }
+      }
     }
   }
 
@@ -500,9 +517,13 @@ class DaisyPlaybackService : MediaSessionService() {
   }
 
   private fun persist(description: String, block: suspend () -> Unit) {
-    storageScope.launch {
-      runCatching { block() }.onFailure { Log.e(TAG, description, it) }
-    }
+    val job =
+      storageScope.launch(start = CoroutineStart.LAZY) {
+        runCatching { block() }.onFailure { Log.e(TAG, description, it) }
+      }
+    pendingStorageJobs += job
+    job.invokeOnCompletion { pendingStorageJobs.remove(job) }
+    job.start()
   }
 
   private fun togglePlayback() {
@@ -777,6 +798,7 @@ class DaisyPlaybackService : MediaSessionService() {
     private const val KEY_PLAYBACK_SPEED = "playback_speed"
     private const val SLEEP_FADE_DURATION_MS = 3_000L
     private const val SLEEP_FADE_STEP_MS = 100L
+    private const val STORAGE_DRAIN_TIMEOUT_MS = 2_000L
     private const val STOP_REASON_BOOK_SWITCH = "boekwissel"
 
     /**
