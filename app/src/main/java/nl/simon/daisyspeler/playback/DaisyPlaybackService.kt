@@ -78,6 +78,13 @@ class DaisyPlaybackService : MediaSessionService() {
    */
   private var pendingPlayBookId: String? = null
 
+  /**
+   * Set when playback is resumed from a media controller (for example the notification after
+   * process death). The session starts playback itself, so the normal play path does not run and
+   * the start bookmark is created on the first isPlaying transition instead.
+   */
+  private var pendingResumeStart = false
+
   override fun onCreate() {
     super.onCreate()
     val container = (application as DaisyApplication).container
@@ -250,6 +257,7 @@ class DaisyPlaybackService : MediaSessionService() {
     }
 
     loadJob?.cancel()
+    pendingResumeStart = false
     loadingBookId = bookId
     publishLoadState(PlaybackLoadState.LOADING, bookId)
     loadJob =
@@ -331,6 +339,7 @@ class DaisyPlaybackService : MediaSessionService() {
       pausePlayback(reason = STOP_REASON_BOOK_SWITCH)
     }
     pendingPlayBookId = null
+    pendingResumeStart = false
     loadJob?.cancel()
     loadJob = null
     loadingBookId = null
@@ -371,6 +380,7 @@ class DaisyPlaybackService : MediaSessionService() {
       playbackPrefs.edit().remove(KEY_LAST_BOOK_ID).apply()
     }
     if (pendingPlayBookId == bookId) pendingPlayBookId = null
+    pendingResumeStart = false
     if (sleepTimerManager.state.value?.bookId == bookId) {
       runCatching { sleepTimerManager.cancel() }
         .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
@@ -532,6 +542,7 @@ class DaisyPlaybackService : MediaSessionService() {
 
   private fun pausePlayback(reason: String = "PAUSE") {
     pendingPlayBookId = null
+    pendingResumeStart = false
     cancelSleepFade()
     recordStop(reason)
     player.pause()
@@ -547,13 +558,18 @@ class DaisyPlaybackService : MediaSessionService() {
   private val playerListener =
     object : Player.Listener {
       override fun onIsPlayingChanged(isPlaying: Boolean) {
-        // Bookmarks are only created by explicit play/pause actions (button, media key or
-        // sleep timer). Save the resume position here, without creating a bookmark.
-        if (!isPlaying) {
-          saveLastPosition()
-          // Undo a (partially) faded out volume after the sleep timer.
-          player.volume = 1f
+        // Bookmarks are normally created by explicit play/pause actions (button, media key or
+        // sleep timer). A resumed session starts playback internally, so close that gap here.
+        if (isPlaying) {
+          if (pendingResumeStart) {
+            pendingResumeStart = false
+            recordStart()
+          }
+          return
         }
+        saveLastPosition()
+        // Undo a (partially) faded out volume after the sleep timer.
+        player.volume = 1f
       }
 
       override fun onPlaybackStateChanged(playbackState: Int) {
@@ -576,6 +592,7 @@ class DaisyPlaybackService : MediaSessionService() {
 
       override fun onPlayerError(error: PlaybackException) {
         Log.e(TAG, "Playback error", error)
+        pendingResumeStart = false
         recordStop("ERROR")
       }
 
@@ -695,6 +712,7 @@ class DaisyPlaybackService : MediaSessionService() {
           playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, bookId).apply()
           updateSessionIntent()
           publishLoadState(PlaybackLoadState.READY, bookId)
+          pendingResumeStart = true
           future.set(
             MediaSession.MediaItemsWithStartPosition(items, start.first.index, start.second)
           )
