@@ -1,12 +1,7 @@
 package nl.simon.daisyspeler.ui.cover
 
-import android.annotation.SuppressLint
-import android.content.Context
 import android.graphics.BitmapFactory
-import android.graphics.Color as AndroidColor
-import android.view.MotionEvent
 import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebView.HitTestResult
 import android.webkit.WebViewClient
@@ -78,6 +73,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import nl.simon.daisyspeler.AppContainer
+import nl.simon.daisyspeler.ui.browser.DaisyWebView
+import nl.simon.daisyspeler.ui.browser.configureDaisyBrowser
 import org.json.JSONTokener
 
 /**
@@ -106,8 +103,8 @@ fun CoverBrowserScreen(
   var loading by remember { mutableStateOf(true) }
 
   val webView = remember(bookId) {
-    CoverWebView(context).apply {
-      configure()
+    DaisyWebView(context).apply {
+      configureDaisyBrowser()
       webViewClient =
         object : WebViewClient() {
           override fun shouldOverrideUrlLoading(
@@ -301,49 +298,8 @@ fun CoverBrowserScreen(
   }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
-private fun CoverWebView.configure() {
-  setBackgroundColor(AndroidColor.WHITE)
-  settings.apply {
-    javaScriptEnabled = true
-    domStorageEnabled = true
-    allowFileAccess = false
-    allowContentAccess = false
-    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-    setSupportZoom(true)
-    builtInZoomControls = true
-    displayZoomControls = false
-    loadWithOverviewMode = true
-    useWideViewPort = true
-    userAgentString = MOBILE_USER_AGENT
-  }
-}
-
-/** Remembers the last touch position so the long-press handler knows which image was touched. */
-private class CoverWebView(context: Context) : WebView(context) {
-  var lastTouchX: Float = 0f
-    private set
-  var lastTouchY: Float = 0f
-    private set
-
-  override fun onTouchEvent(event: MotionEvent): Boolean {
-    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-      lastTouchX = event.x
-      lastTouchY = event.y
-    }
-    val handled = super.onTouchEvent(event)
-    if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
-    return handled
-  }
-
-  override fun performClick(): Boolean {
-    super.performClick()
-    return true
-  }
-}
-
 private fun requestImageAtPoint(
-  webView: CoverWebView,
+  webView: DaisyWebView,
   onImage: (String) -> Unit,
   onNothing: () -> Unit,
 ) {
@@ -436,7 +392,3 @@ private fun decodePreview(bytes: ByteArray): ImageBitmap? {
 }
 
 private const val MAX_PREVIEW_SIDE = 1080
-
-private const val MOBILE_USER_AGENT =
-  "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
-    "Chrome/131.0.0.0 Mobile Safari/537.36"

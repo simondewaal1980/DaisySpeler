@@ -10,6 +10,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import nl.simon.daisyspeler.playback.DaisyPlaybackService
 import nl.simon.daisyspeler.ui.about.AboutScreen
+import nl.simon.daisyspeler.ui.browser.BookBrowserScreen
 import nl.simon.daisyspeler.ui.cover.CoverBrowserScreen
 import nl.simon.daisyspeler.ui.library.LibraryScreen
 import nl.simon.daisyspeler.ui.player.PlayerScreen
@@ -40,6 +41,7 @@ fun MainNavigation(container: AppContainer, onExit: () -> Unit) {
               container = container,
               onOpenBook = { bookId -> backStack.add(PlayerRoute(bookId)) },
               onOpenCoverBrowser = { bookId -> backStack.add(CoverBrowserRoute(bookId)) },
+              onOpenBookBrowser = { site -> backStack.add(BookBrowserRoute(site)) },
               onOpenAbout = { backStack.add(AboutRoute) },
               onExit = onExit,
             )
@@ -64,6 +66,13 @@ fun MainNavigation(container: AppContainer, onExit: () -> Unit) {
             CoverBrowserScreen(
               container = container,
               bookId = route.bookId,
+              onBack = { backStack.removeLastOrNull() },
+            )
+          }
+          entry<BookBrowserRoute> { route ->
+            BookBrowserScreen(
+              container = container,
+              initialSite = route.site,
               onBack = { backStack.removeLastOrNull() },
             )
           }
