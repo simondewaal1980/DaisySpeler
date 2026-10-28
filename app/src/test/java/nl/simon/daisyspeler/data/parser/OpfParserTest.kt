@@ -1,5 +1,6 @@
 package nl.simon.daisyspeler.data.parser
 
+import kotlinx.coroutines.runBlocking
 import nl.simon.daisyspeler.testutil.MemoryBookSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -55,7 +56,7 @@ class OpfParserTest {
         )
       )
 
-    val book = DaisyBookLoader().load(source)
+    val book = runBlocking { DaisyBookLoader().load(source) }
     assertEquals("OPF Titel", book.title)
     assertEquals("OPF Auteur", book.author)
     assertEquals("nl", book.language)

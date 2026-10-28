@@ -36,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import nl.simon.daisyspeler.DaisyApplication
@@ -66,6 +68,22 @@ class DaisyPlaybackService : MediaSessionService() {
   private var loadingBookId: String? = null
   private var loadJob: Job? = null
   private var sleepFadeJob: Job? = null
+
+  /** LOAD_BOOK and onPlaybackResumption both build and commit media under this mutex. */
+  private val loadMutex = Mutex()
+  private var loadGeneration = 0L
+  private var internalRequestSequence = 0L
+  private var activeLoadRequestId = 0L
+  private var activeLoadBookId: String? = null
+  private var pendingResumption: PendingResumption? = null
+
+  /** Keeps a permanent focus loss visible to the controller instead of looking like a pause. */
+  private var audioFocusLostPermanently = false
+
+  private var publishedLoadState = PlaybackLoadState.IDLE
+  private var publishedLoadBookId: String? = null
+  private var publishedLoadError: String? = null
+  private var lastLoggedStatus: String? = null
 
   /**
    * Set when the user asks to play while the book is still being loaded. The load finishes by
@@ -250,16 +268,33 @@ class DaisyPlaybackService : MediaSessionService() {
     }
   }
 
-  private fun loadBook(bookId: String, autoPlay: Boolean = false) {
-    if (loadedBookId == bookId && player.mediaItemCount > 0) {
-      publishLoadState(PlaybackLoadState.READY, bookId)
-      if (autoPlay) startPlayback()
-      return
+  private fun loadBook(
+    bookId: String,
+    autoPlay: Boolean = false,
+    requestId: Long = 0L,
+    force: Boolean = false,
+  ) {
+    activeLoadRequestId = normalizeRequestId(requestId)
+    activeLoadBookId = bookId
+
+    // An explicit retry or a forced repair must start a fresh attempt instead of joining a load
+    // that may be stuck. A resumption waiting for Media3 to commit is superseded as well.
+    if (loadingBookId == bookId && (force || pendingResumption != null)) {
+      loadGeneration++
+      pendingResumption = null
+      loadingBookId = null
     }
-    // A load for this book is already running. Remember the play request and let the
-    // running load finish; starting a second load would only restart the work.
+    // A load for this book is already running. Remember the play request and echo the newest
+    // request id so an older UI attempt cannot overwrite this one.
     if (loadingBookId == bookId) {
       if (autoPlay) pendingPlayBookId = bookId
+      publishLoadState(PlaybackLoadState.LOADING, bookId, reason = "join in-flight load")
+      return
+    }
+    if (!force && loadedBookId == bookId && hasMediaFor(bookId)) {
+      pendingResumption = null
+      publishLoadState(PlaybackLoadState.READY, bookId, reason = "reuse committed media")
+      if (autoPlay) startPlayback()
       return
     }
     if (pendingPlayBookId != bookId) pendingPlayBookId = null
@@ -270,21 +305,33 @@ class DaisyPlaybackService : MediaSessionService() {
       pausePlayback(reason = STOP_REASON_BOOK_SWITCH)
     }
 
+    val generation = ++loadGeneration
     loadJob?.cancel()
+    pendingResumption = null
     pendingResumeStart = false
     loadingBookId = bookId
-    publishLoadState(PlaybackLoadState.LOADING, bookId)
+    publishLoadState(PlaybackLoadState.LOADING, bookId, reason = "request")
     loadJob =
       serviceScope.launch {
         var mediaCommitted = false
         try {
-          val entry =
-            libraryRepository.get(bookId)
-              ?: error("Boek niet gevonden in de bibliotheek.")
-          val book = bookRepository.loadById(bookId)
-          val source = bookRepository.sourceById(bookId)
-          val items = buildMediaItems(book, source, bookId)
-          if (items.isEmpty()) error("Geen audio gevonden.")
+          val prepared =
+            loadMutex.withLock {
+              if (generation != loadGeneration) {
+                throw CancellationException("Boekload vervangen door een nieuwere aanvraag.")
+              }
+              val entry =
+                libraryRepository.get(bookId)
+                  ?: error("Boek niet gevonden in de bibliotheek.")
+              val book = bookRepository.loadById(bookId)
+              val source = bookRepository.sourceById(bookId)
+              val items = buildMediaItems(book, source, bookId)
+              if (items.isEmpty()) error("Geen audio gevonden.")
+              PreparedBook(book, items, entry)
+            }
+          if (generation != loadGeneration) {
+            throw CancellationException("Boekload vervangen door een nieuwere aanvraag.")
+          }
           val timer = sleepTimerManager.state.value
           if (timer != null && timer.bookId != bookId) {
             runCatching { sleepTimerManager.cancel() }
@@ -292,27 +339,33 @@ class DaisyPlaybackService : MediaSessionService() {
           }
           val playAfterLoad = autoPlay || pendingPlayBookId == bookId
           withContext(Dispatchers.Main.immediate) {
+            if (generation != loadGeneration || activeLoadBookId != bookId) {
+              return@withContext
+            }
             player.playWhenReady = false
-            player.setMediaItems(items)
+            player.setMediaItems(prepared.items)
             mediaCommitted = true
             player.prepare()
-            loadedBook = book
+            loadedBook = prepared.book
             loadedBookId = bookId
+            pendingResumption = null
             playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, bookId).apply()
-            entry.lastPosition?.let { position ->
+            prepared.entry.lastPosition?.let { position ->
               val target =
-                book.segmentForSource(position.sourcePath, position.sourceOffsetMs, position.globalMs)
-                  ?: book.segmentAtGlobal(position.globalMs)
+                prepared.book.segmentForSource(
+                  position.sourcePath,
+                  position.sourceOffsetMs,
+                  position.globalMs,
+                ) ?: prepared.book.segmentAtGlobal(position.globalMs)
               if (target != null) {
                 player.seekTo(target.first.index, target.second)
               }
             }
             updateSessionIntent()
-            publishLoadState(PlaybackLoadState.READY, bookId)
+            publishLoadState(PlaybackLoadState.READY, bookId, reason = "media committed")
             if (playAfterLoad) {
               pendingPlayBookId = null
-              recordStart()
-              player.play()
+              startPlayback()
             }
           }
         } catch (cancelled: CancellationException) {
@@ -320,6 +373,9 @@ class DaisyPlaybackService : MediaSessionService() {
         } catch (error: Throwable) {
           Log.e(TAG, "Kon boek $bookId niet laden", error)
           withContext(Dispatchers.Main.immediate) {
+            if (generation != loadGeneration || activeLoadBookId != bookId) {
+              return@withContext
+            }
             // Keep the previous book when there was one and the player was not replaced.
             // If new media was committed, clear it so the player and book state stay in sync.
             if (mediaCommitted || loadedBookId == null || loadedBookId == bookId) {
@@ -333,13 +389,41 @@ class DaisyPlaybackService : MediaSessionService() {
               PlaybackLoadState.ERROR,
               bookId,
               error.message ?: "Boek kon niet worden geladen.",
+              reason = "load failed",
             )
           }
         } finally {
-          if (loadingBookId == bookId) loadingBookId = null
+          if (generation == loadGeneration && loadingBookId == bookId) {
+            loadingBookId = null
+          }
         }
       }
   }
+
+  private fun normalizeRequestId(requestId: Long): Long =
+    if (requestId != 0L) requestId else -(++internalRequestSequence)
+
+  private class PreparedBook(
+    val book: DaisyBook,
+    val items: List<MediaItem>,
+    val entry: nl.simon.daisyspeler.data.storage.LibraryEntry,
+  )
+
+  private class PendingResumption(
+    val book: DaisyBook,
+    val bookId: String,
+    val generation: Long,
+    val requestId: Long,
+    val startForPlayback: Boolean,
+  )
+
+  private class ResumptionMedia(
+    val book: DaisyBook,
+    val bookId: String,
+    val items: List<MediaItem>,
+    val startIndex: Int,
+    val startPositionMs: Long,
+  )
 
   /**
    * Stops and releases the current book when the user returns to the library. Loading a new book
@@ -355,9 +439,14 @@ class DaisyPlaybackService : MediaSessionService() {
     }
     pendingPlayBookId = null
     pendingResumeStart = false
+    loadGeneration++
     loadJob?.cancel()
     loadJob = null
     loadingBookId = null
+    pendingResumption = null
+    activeLoadBookId = null
+    activeLoadRequestId = 0L
+    audioFocusLostPermanently = false
     player.stop()
     player.clearMediaItems()
     loadedBook = null
@@ -368,7 +457,7 @@ class DaisyPlaybackService : MediaSessionService() {
       runCatching { sleepTimerManager.cancel() }
         .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
     }
-    publishLoadState(PlaybackLoadState.IDLE)
+    publishLoadState(PlaybackLoadState.IDLE, reason = "book switch")
   }
 
   /**
@@ -382,9 +471,11 @@ class DaisyPlaybackService : MediaSessionService() {
     if (!isLoaded && !isLoading && !isLastBook) return
 
     if (isLoading) {
+      loadGeneration++
       loadJob?.cancel()
       loadJob = null
       loadingBookId = null
+      pendingResumption = null
     }
     if (isLoaded) {
       pausePlayback(reason = "REMOVE")
@@ -398,6 +489,10 @@ class DaisyPlaybackService : MediaSessionService() {
     }
     if (pendingPlayBookId == bookId) pendingPlayBookId = null
     pendingResumeStart = false
+    if (activeLoadBookId == bookId) {
+      activeLoadBookId = null
+      activeLoadRequestId = 0L
+    }
     if (sleepTimerManager.state.value?.bookId == bookId) {
       runCatching { sleepTimerManager.cancel() }
         .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
@@ -414,16 +509,59 @@ class DaisyPlaybackService : MediaSessionService() {
     state: PlaybackLoadState,
     bookId: String? = null,
     error: String? = null,
+    reason: String? = null,
   ) {
+    val previous = publishedLoadState
+    publishedLoadState = state
+    publishedLoadBookId = bookId
+    publishedLoadError = error
+    publishStatus(
+      reason = reason ?: "load ${previous.name}->${state.name}"
+    )
+  }
+
+  /**
+   * The session extras are the single source of truth for the UI. Media availability is derived
+   * from the actual player, so READY can never be published for a book that is not committed.
+   */
+  private fun publishStatus(reason: String? = null) {
+    val mediaAvailable = publishedLoadBookId?.let(::hasMediaFor) == true
     val extras =
       Bundle().apply {
-        putString(PlaybackCommands.KEY_LOAD_STATE, state.name)
-        bookId?.let { putString(PlaybackCommands.KEY_LOAD_BOOK_ID, it) }
-        error?.let { putString(PlaybackCommands.KEY_LOAD_ERROR, it) }
+        putString(PlaybackCommands.KEY_LOAD_STATE, publishedLoadState.name)
+        publishedLoadBookId?.let { putString(PlaybackCommands.KEY_LOAD_BOOK_ID, it) }
+        publishedLoadError?.let { putString(PlaybackCommands.KEY_LOAD_ERROR, it) }
+        putLong(PlaybackCommands.KEY_LOAD_REQUEST_ID, activeLoadRequestId)
+        putBoolean(PlaybackCommands.KEY_MEDIA_AVAILABLE, mediaAvailable)
+        putBoolean(PlaybackCommands.KEY_PLAY_WHEN_READY, player.playWhenReady)
+        putInt(PlaybackCommands.KEY_SUPPRESSION_REASON, player.playbackSuppressionReason)
+        putBoolean(PlaybackCommands.KEY_AUDIO_FOCUS_LOST, audioFocusLostPermanently)
+        player.playerError?.message?.let { putString(PlaybackCommands.KEY_PLAYBACK_ERROR, it) }
       }
+    val snapshot =
+      "${publishedLoadState.name}|${publishedLoadBookId}|$activeLoadRequestId|" +
+        "media=$mediaAvailable|pwr=${player.playWhenReady}|" +
+        "suppression=${player.playbackSuppressionReason}|focusLost=$audioFocusLostPermanently"
+    if (snapshot != lastLoggedStatus || reason != null) {
+      lastLoggedStatus = snapshot
+      Log.d(
+        TAG,
+        "state ${publishedLoadState.name} request=$activeLoadRequestId book=${publishedLoadBookId ?: "-"} " +
+          "media=$mediaAvailable pwr=${player.playWhenReady} " +
+          "suppression=${player.playbackSuppressionReason} focusLost=$audioFocusLostPermanently " +
+          "reason=${reason ?: "-"}",
+      )
+    }
     runCatching { mediaSession?.setSessionExtras(extras) }
       .onFailure { Log.e(TAG, "Kon laadstatus niet publiceren", it) }
   }
+
+  private fun hasMediaFor(bookId: String): Boolean =
+    loadedBookId == bookId && playerHasMediaFor(bookId)
+
+  private fun playerHasMediaFor(bookId: String): Boolean =
+    player.mediaItemCount > 0 &&
+      player.currentMediaItem?.mediaId?.startsWith("$bookId:") == true
 
   private fun buildMediaItems(
     book: DaisyBook,
@@ -507,7 +645,14 @@ class DaisyPlaybackService : MediaSessionService() {
   private fun persist(description: String, block: () -> Unit) = storage.enqueue(description, block)
 
   private fun togglePlayback() {
-    if (player.isPlaying) {
+    // During buffering isPlaying is false while the user intent is still "play". During a
+    // transient focus loss the suppression reason is the reliable signal. Only a real user
+    // pause request clears playWhenReady.
+    val suppressed =
+      player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
+    if (suppressed || audioFocusLostPermanently) {
+      startPlayback()
+    } else if (player.playWhenReady || player.isPlaying) {
       pausePlayback()
     } else {
       startPlayback()
@@ -522,6 +667,7 @@ class DaisyPlaybackService : MediaSessionService() {
     val loading = loadingBookId
     if (loading != null && loading != loadedBookId) {
       pendingPlayBookId = loading
+      publishStatus(reason = "play pending load")
       return
     }
 
@@ -539,16 +685,38 @@ class DaisyPlaybackService : MediaSessionService() {
     if (player.playbackState == Player.STATE_ENDED) {
       player.seekTo(0, 0L)
     }
+
+    val recovering = player.playerError != null || player.playbackState == Player.STATE_IDLE
+    if (recovering) {
+      Log.d(TAG, "Herstel afspelen: prepare() na fout of idle-toestand")
+      player.prepare()
+    }
+
+    val suppressed =
+      player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
+    if (player.playWhenReady && (suppressed || audioFocusLostPermanently)) {
+      // play() is a no-op when playWhenReady is already true and ExoPlayer holds a suppressed
+      // audio focus request. Drop the intent first so play() asks for focus again.
+      player.playWhenReady = false
+    }
+    audioFocusLostPermanently = false
+
+    // An explicit user play opens exactly one bookmark session. The repository ignores a second
+    // start while the same session is still open, so recovery cannot create duplicates.
+    pendingResumeStart = false
     recordStart()
     player.play()
+    publishStatus(reason = if (recovering) "recover play" else "user play")
   }
 
   private fun pausePlayback(reason: String = "PAUSE") {
     pendingPlayBookId = null
     pendingResumeStart = false
+    audioFocusLostPermanently = false
     cancelSleepFade()
     recordStop(reason)
     player.pause()
+    publishStatus(reason = "pause $reason")
   }
 
   private fun jumpHeading(forward: Boolean) {
@@ -561,8 +729,15 @@ class DaisyPlaybackService : MediaSessionService() {
   private val playerListener =
     object : Player.Listener {
       override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-        if (playWhenReady) return
+        if (playWhenReady) {
+          audioFocusLostPermanently = false
+          publishStatus(reason = "playWhenReady true")
+          return
+        }
         pendingResumeStart = false
+        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+          audioFocusLostPermanently = true
+        }
         if (loadingBookId == null &&
           (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ||
             reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
@@ -570,6 +745,7 @@ class DaisyPlaybackService : MediaSessionService() {
           cancelSleepFade()
           recordStop("PAUSE")
         }
+        publishStatus(reason = "playWhenReady false reason=$reason")
       }
 
       override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
@@ -582,6 +758,7 @@ class DaisyPlaybackService : MediaSessionService() {
           recordStop("PAUSE")
           pendingResumeStart = true
         }
+        publishStatus(reason = "suppression=$playbackSuppressionReason")
       }
 
       override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -592,11 +769,13 @@ class DaisyPlaybackService : MediaSessionService() {
             pendingResumeStart = false
             recordStart()
           }
+          publishStatus(reason = "isPlaying true")
           return
         }
         saveLastPosition()
         // Undo a (partially) faded out volume after the sleep timer.
         player.volume = 1f
+        publishStatus(reason = "isPlaying false")
       }
 
       override fun onPlaybackStateChanged(playbackState: Int) {
@@ -606,6 +785,16 @@ class DaisyPlaybackService : MediaSessionService() {
           runCatching { sleepTimerManager.cancel() }
             .onFailure { Log.e(TAG, "Kon slaaptimer niet annuleren", it) }
         }
+        commitResumptionIfReady()
+        publishStatus(reason = "playbackState=$playbackState")
+      }
+
+      override fun onMediaItemTransition(
+        mediaItem: MediaItem?,
+        reason: Int,
+      ) {
+        commitResumptionIfReady()
+        publishStatus(reason = "mediaItemTransition=$reason")
       }
 
       override fun onPositionDiscontinuity(
@@ -621,6 +810,7 @@ class DaisyPlaybackService : MediaSessionService() {
         Log.e(TAG, "Playback error", error)
         pendingResumeStart = false
         recordStop("ERROR")
+        publishStatus(reason = "player error")
       }
 
       override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
@@ -630,6 +820,28 @@ class DaisyPlaybackService : MediaSessionService() {
           .apply()
       }
     }
+
+  /**
+   * onPlaybackResumption only returns media to Media3; the session commits them afterwards.
+   * READY is therefore delayed until the player actually contains this book's media.
+   */
+  private fun commitResumptionIfReady() {
+    val pending = pendingResumption ?: return
+    if (pending.generation != loadGeneration) {
+      pendingResumption = null
+      return
+    }
+    if (activeLoadBookId != pending.bookId || !playerHasMediaFor(pending.bookId)) return
+
+    loadedBook = pending.book
+    loadedBookId = pending.bookId
+    loadingBookId = null
+    pendingResumption = null
+    pendingResumeStart = pending.startForPlayback
+    playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, pending.bookId).apply()
+    updateSessionIntent()
+    publishLoadState(PlaybackLoadState.READY, pending.bookId, reason = "resumption media committed")
+  }
 
   private inner class SessionCallback : MediaSession.Callback {
     override fun onConnect(
@@ -680,9 +892,9 @@ class DaisyPlaybackService : MediaSessionService() {
           KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> jumpHeading(forward = true)
           KeyEvent.KEYCODE_MEDIA_PREVIOUS,
           KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD -> jumpHeading(forward = false)
-          KeyEvent.KEYCODE_MEDIA_PLAY -> if (!player.isPlaying) startPlayback()
+          KeyEvent.KEYCODE_MEDIA_PLAY -> startPlayback()
           KeyEvent.KEYCODE_MEDIA_PAUSE,
-          KeyEvent.KEYCODE_MEDIA_STOP -> if (player.isPlaying) pausePlayback()
+          KeyEvent.KEYCODE_MEDIA_STOP -> pausePlayback()
           KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> togglePlayback()
         }
       }
@@ -699,7 +911,9 @@ class DaisyPlaybackService : MediaSessionService() {
       // create a bookmark too. Previous/next commands intentionally do not.
       if (playerCommand == Player.COMMAND_PLAY_PAUSE && loadingBookId == null) {
         cancelSleepFade()
-        if (player.isPlaying) {
+        // The default play/pause command flips playWhenReady, not isPlaying. Buffering and a
+        // suppressed focus request must therefore be treated as an active listening session.
+        if (player.playWhenReady || player.isPlaying) {
           recordStop("PAUSE")
         } else {
           recordStart()
@@ -714,43 +928,95 @@ class DaisyPlaybackService : MediaSessionService() {
       isForPlayback: Boolean,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
       val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+      val generation = ++loadGeneration
+      loadJob?.cancel()
+      pendingResumption = null
+      loadingBookId = null
+      activeLoadRequestId = normalizeRequestId(0L)
       serviceScope.launch {
         var resumptionBookId: String? = null
         try {
-          val bookId = playbackPrefs.getString(KEY_LAST_BOOK_ID, null)
-            ?: error("Er is nog geen boek afgespeeld.")
-          resumptionBookId = bookId
-          publishLoadState(PlaybackLoadState.LOADING, bookId)
-          val entry = libraryRepository.get(bookId)
-            ?: error("Het laatst afgespeelde boek is niet meer beschikbaar.")
-          val book = bookRepository.loadById(bookId)
-          val source = bookRepository.sourceById(bookId)
-          val items = buildMediaItems(book, source, bookId)
-          if (items.isEmpty()) error("Geen audio gevonden.")
+          val prepared =
+            loadMutex.withLock {
+              if (generation != loadGeneration) {
+                throw CancellationException("Hervatten vervangen door een nieuwere aanvraag.")
+              }
+              val bookId = playbackPrefs.getString(KEY_LAST_BOOK_ID, null)
+                ?: error("Er is nog geen boek afgespeeld.")
+              resumptionBookId = bookId
+              activeLoadBookId = bookId
+              loadingBookId = bookId
+              publishLoadState(
+                PlaybackLoadState.LOADING,
+                bookId,
+                reason = "playback resumption",
+              )
+              val entry = libraryRepository.get(bookId)
+                ?: error("Het laatst afgespeelde boek is niet meer beschikbaar.")
+              val book = bookRepository.loadById(bookId)
+              val source = bookRepository.sourceById(bookId)
+              val items = buildMediaItems(book, source, bookId)
+              if (items.isEmpty()) error("Geen audio gevonden.")
 
-          val start =
-            entry.lastPosition?.let { position ->
-              book.segmentForSource(position.sourcePath, position.sourceOffsetMs, position.globalMs)
-                ?: book.segmentAtGlobal(position.globalMs)
-            } ?: (book.segments.first() to 0L)
+              val start =
+                entry.lastPosition?.let { position ->
+                  book.segmentForSource(
+                    position.sourcePath,
+                    position.sourceOffsetMs,
+                    position.globalMs,
+                  ) ?: book.segmentAtGlobal(position.globalMs)
+                } ?: (book.segments.first() to 0L)
 
-          loadedBook = book
-          loadedBookId = bookId
-          playbackPrefs.edit().putString(KEY_LAST_BOOK_ID, bookId).apply()
-          updateSessionIntent()
-          publishLoadState(PlaybackLoadState.READY, bookId)
-          pendingResumeStart = true
+              ResumptionMedia(
+                book = book,
+                bookId = bookId,
+                items = items,
+                startIndex = start.first.index,
+                startPositionMs = start.second,
+              )
+            }
+          if (generation != loadGeneration) {
+            throw CancellationException("Hervatten vervangen door een nieuwere aanvraag.")
+          }
+          // Media3 commits these items after this future completes. READY follows only from the
+          // player listener once the media are actually present.
+          pendingResumption =
+            PendingResumption(
+              book = prepared.book,
+              bookId = prepared.bookId,
+              generation = generation,
+              requestId = activeLoadRequestId,
+              startForPlayback = isForPlayback,
+            )
           future.set(
-            MediaSession.MediaItemsWithStartPosition(items, start.first.index, start.second)
+            MediaSession.MediaItemsWithStartPosition(
+              prepared.items,
+              prepared.startIndex,
+              prepared.startPositionMs,
+            )
           )
         } catch (cancelled: CancellationException) {
-          throw cancelled
+          if (generation == loadGeneration) {
+            loadingBookId = null
+            publishLoadState(
+              PlaybackLoadState.ERROR,
+              resumptionBookId,
+              "Het hervatten is geannuleerd.",
+              reason = "resumption cancelled",
+            )
+          }
+          future.setException(cancelled)
         } catch (error: Throwable) {
-          publishLoadState(
-            PlaybackLoadState.ERROR,
-            resumptionBookId,
-            error.message ?: "Het boek kon niet worden hervat.",
-          )
+          if (generation == loadGeneration) {
+            loadingBookId = null
+            pendingResumption = null
+            publishLoadState(
+              PlaybackLoadState.ERROR,
+              resumptionBookId,
+              error.message ?: "Het boek kon niet worden hervat.",
+              reason = "resumption failed",
+            )
+          }
           future.setException(error)
         }
       }
@@ -765,7 +1031,13 @@ class DaisyPlaybackService : MediaSessionService() {
     ): ListenableFuture<SessionResult> {
       when (customCommand.customAction) {
         PlaybackCommands.LOAD_BOOK -> {
-          args.getString(PlaybackCommands.KEY_BOOK_ID)?.let(::loadBook)
+          args.getString(PlaybackCommands.KEY_BOOK_ID)?.let { bookId ->
+            loadBook(
+              bookId = bookId,
+              requestId = args.getLong(PlaybackCommands.KEY_LOAD_REQUEST_ID, 0L),
+              force = args.getBoolean(PlaybackCommands.KEY_LOAD_FORCE, false),
+            )
+          }
         }
         PlaybackCommands.UNLOAD_BOOK -> {
           args.getString(PlaybackCommands.KEY_BOOK_ID)?.let(::unloadBook)

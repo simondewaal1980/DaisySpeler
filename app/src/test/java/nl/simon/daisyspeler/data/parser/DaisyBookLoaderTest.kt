@@ -1,6 +1,7 @@
 package nl.simon.daisyspeler.data.parser
 
 import nl.simon.daisyspeler.data.book.NavType
+import kotlinx.coroutines.runBlocking
 import nl.simon.daisyspeler.testutil.MemoryBookSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,8 +41,14 @@ class DaisyBookLoaderTest {
     assertEquals(20_000L, overlapping.totalDurationMs)
   }
 
+  private fun loadBook(source: nl.simon.daisyspeler.data.source.BookSource) =
+    runBlocking { DaisyBookLoader().load(source) }
+
+  private fun findCover(source: nl.simon.daisyspeler.data.source.BookSource) =
+    runBlocking { DaisyBookLoader().findCover(source) }
+
   private fun loadClips(vararg clips: Pair<Long, Long>) =
-    DaisyBookLoader().load(
+    loadBook(
       MemoryBookSource.fromText(
         mapOf(
           "ncc.html" to "<html><head><title>Test</title></head><body>" +
@@ -58,7 +65,7 @@ class DaisyBookLoaderTest {
 
   @Test
   fun `loads daisy 202 without opf and resolves nested audio`() {
-    val book = DaisyBookLoader().load(sampleBook())
+    val book = loadBook(sampleBook())
 
     assertEquals("Café aan de berg", book.title)
     assertEquals("Per Tester", book.author)
@@ -79,7 +86,7 @@ class DaisyBookLoaderTest {
 
   @Test
   fun `resolves next and previous heading targets`() {
-    val book = DaisyBookLoader().load(sampleBook())
+    val book = loadBook(sampleBook())
 
     assertEquals(2_000L, book.headingTarget(positionMs = 0L, forward = true)?.globalMs)
     assertEquals(2_000L, book.headingTarget(positionMs = 2_000L, forward = true)?.globalMs)
@@ -114,7 +121,7 @@ class DaisyBookLoaderTest {
         charset = Charset.forName("windows-1252"),
       )
 
-    val book = DaisyBookLoader().load(source)
+    val book = loadBook(source)
     assertEquals("Café", book.title)
     assertEquals(1, book.segments.size)
   }
@@ -143,10 +150,10 @@ class DaisyBookLoaderTest {
         )
       )
 
-    val book = DaisyBookLoader().load(source)
+    val book = loadBook(source)
 
     assertEquals("book/images/cover.jpg", book.coverPath)
-    assertEquals("book/images/cover.jpg", DaisyBookLoader().findCover(source))
+    assertEquals("book/images/cover.jpg", findCover(source))
   }
 
   @Test
@@ -175,7 +182,7 @@ class DaisyBookLoaderTest {
         )
       )
 
-    assertEquals("book/images/001.jpg", DaisyBookLoader().load(source).coverPath)
+    assertEquals("book/images/001.jpg", loadBook(source).coverPath)
   }
 
   @Test
@@ -201,7 +208,7 @@ class DaisyBookLoaderTest {
         )
       )
 
-    assertEquals("book/plaatje.jpg", DaisyBookLoader().load(source).coverPath)
+    assertEquals("book/plaatje.jpg", loadBook(source).coverPath)
   }
 
   @Test
@@ -228,13 +235,13 @@ class DaisyBookLoaderTest {
         )
       )
 
-    assertEquals("book/kaft.jpg", DaisyBookLoader().load(source).coverPath)
+    assertEquals("book/kaft.jpg", loadBook(source).coverPath)
   }
 
   @Test
   fun `falls back to a file named like a cover`() {
     val book =
-      DaisyBookLoader().load(
+      loadBook(
         MemoryBookSource(
           mapOf(
             "book/ncc.html" to
@@ -281,7 +288,7 @@ class DaisyBookLoaderTest {
         )
       )
 
-    assertEquals("Naamloos boek", DaisyBookLoader().load(source).title)
+    assertEquals("Naamloos boek", loadBook(source).title)
   }
 
   @Test
@@ -306,7 +313,7 @@ class DaisyBookLoaderTest {
         )
       )
 
-    assertEquals("mijn-boek", DaisyBookLoader().load(source).title)
+    assertEquals("mijn-boek", loadBook(source).title)
   }
 
   @Test
@@ -333,7 +340,7 @@ class DaisyBookLoaderTest {
         )
       )
 
-    val book = DaisyBookLoader().load(source)
+    val book = loadBook(source)
 
     assertEquals(1, book.segments.size)
     assertEquals(1_000L, book.totalDurationMs)
@@ -367,12 +374,42 @@ class DaisyBookLoaderTest {
         )
       )
 
-    val book = DaisyBookLoader().load(source)
+    val book = loadBook(source)
 
     assertEquals(1, book.segments.size)
     assertEquals(0L, book.segments.single().clipStartMs)
     assertEquals(2_000L, book.segments.single().clipEndMs)
     assertEquals(2_000L, book.totalDurationMs)
+  }
+
+  @Test
+  fun `many clips without an end time are completed in linear-ish time`() {
+    val clipCount = 6_000
+    val pars =
+      (0 until clipCount).joinToString("") { index ->
+        "<par id='p$index'><audio src='a.mp3' clip-begin='${index * 1_000}ms'/></par>"
+      }
+    val source =
+      MemoryBookSource.fromText(
+        mapOf(
+          "book/ncc.html" to
+            """
+            <html><head><meta name="dc:title" content="Veel clips"/></head><body>
+              <h1><a href="s.smil#p0">Hoofdstuk</a></h1>
+            </body></html>
+            """.trimIndent(),
+          "book/s.smil" to "<smil><body><seq>$pars</seq></body></smil>",
+          "book/a.mp3" to "",
+        )
+      )
+
+    val started = System.nanoTime()
+    val book = loadBook(source)
+    val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+    assertEquals(1, book.segments.size)
+    assertEquals((clipCount - 1) * 1_000L, book.totalDurationMs)
+    assertTrue("Parser took ${elapsedMs}ms for $clipCount clips", elapsedMs < 5_000L)
   }
 
   private fun sampleBook(): MemoryBookSource =

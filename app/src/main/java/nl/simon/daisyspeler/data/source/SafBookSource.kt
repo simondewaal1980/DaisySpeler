@@ -10,6 +10,7 @@ import java.io.InputStream
 class SafBookSource(
   private val context: Context,
   treeUri: Uri,
+  private val cancellationCheck: () -> Boolean = { false },
 ) : BookSource {
   private val root = DocumentFile.fromTreeUri(context, treeUri)
   private val fileIndex = LinkedHashMap<String, DocumentFile>()
@@ -22,10 +23,18 @@ class SafBookSource(
     walk(root, "", 0)
   }
 
+  private fun checkCancelled() {
+    if (cancellationCheck()) {
+      throw kotlinx.coroutines.CancellationException("Boekmap inlezen geannuleerd.")
+    }
+  }
+
   private fun walk(directory: DocumentFile, prefix: String, depth: Int) {
     if (depth > 8 || fileIndex.size > 20_000) return
+    checkCancelled()
     val children = directory.listFiles()
     for (child in children) {
+      checkCancelled()
       val name = child.name ?: continue
       if (name.startsWith(".")) continue
       val path = PathUtils.join(prefix, name)

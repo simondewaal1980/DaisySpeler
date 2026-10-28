@@ -9,7 +9,10 @@ import java.io.InputStream
 /**
  * Book source for a DAISY book that was extracted from a ZIP file into app-private storage.
  */
-class FileBookSource(rootDir: File) : BookSource {
+class FileBookSource(
+  rootDir: File,
+  private val cancellationCheck: () -> Boolean = { false },
+) : BookSource {
   private val root = rootDir.canonicalFile
   private val fileIndex = LinkedHashMap<String, File>()
   private val fileList = mutableListOf<SourceFile>()
@@ -21,10 +24,18 @@ class FileBookSource(rootDir: File) : BookSource {
     walk(root, "", 0)
   }
 
+  private fun checkCancelled() {
+    if (cancellationCheck()) {
+      throw kotlinx.coroutines.CancellationException("Boekmap inlezen geannuleerd.")
+    }
+  }
+
   private fun walk(directory: File, prefix: String, depth: Int) {
     if (depth > 8 || fileIndex.size > 20_000) return
+    checkCancelled()
     val children = directory.listFiles()?.sortedBy { it.name.lowercase() } ?: return
     for (child in children) {
+      checkCancelled()
       val name = child.name
       if (name.startsWith(".")) continue
       val path = PathUtils.join(prefix, name)

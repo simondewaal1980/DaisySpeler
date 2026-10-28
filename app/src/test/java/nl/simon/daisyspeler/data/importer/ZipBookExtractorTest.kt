@@ -1,5 +1,6 @@
 package nl.simon.daisyspeler.data.importer
 
+import kotlinx.coroutines.runBlocking
 import nl.simon.daisyspeler.data.parser.DaisyBookLoader
 import nl.simon.daisyspeler.data.source.FileBookSource
 import org.junit.Assert.assertEquals
@@ -49,7 +50,7 @@ class ZipBookExtractorTest {
       assertFalse(target.resolve(".DS_Store").exists())
       assertFalse(target.resolve("__MACOSX").exists())
 
-      val book = DaisyBookLoader().load(FileBookSource(target))
+      val book = runBlocking { DaisyBookLoader().load(FileBookSource(target)) }
       assertEquals("ZIP boek", book.title)
       assertEquals("Testauteur", book.author)
       assertEquals(1, book.segments.size)

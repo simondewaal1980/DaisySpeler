@@ -4,14 +4,18 @@ import nl.simon.daisyspeler.data.book.AudioSegment
 import nl.simon.daisyspeler.data.book.DaisyBook
 import nl.simon.daisyspeler.data.book.NavPoint
 import nl.simon.daisyspeler.data.book.NavType
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import nl.simon.daisyspeler.data.source.BookSource
 import nl.simon.daisyspeler.data.source.SourceFile
+import java.util.TreeSet
 import kotlin.math.max
 
 class DaisyParseException(message: String) : Exception(message)
 
 class DaisyBookLoader {
-  fun load(source: BookSource): DaisyBook {
+  suspend fun load(source: BookSource): DaisyBook {
+    currentCoroutineContext().ensureActive()
     val warnings = mutableListOf<String>()
     val allFiles = source.files().filterNot { it.isDirectory }
     if (allFiles.isEmpty()) throw DaisyParseException("Deze map is leeg.")
@@ -58,11 +62,13 @@ class DaisyBookLoader {
 
     val parsedSmils = mutableListOf<ParsedSmil>()
     for (smilPath in smilOrder) {
+      currentCoroutineContext().ensureActive()
       runCatching { SmilParser.parse(source, smilPath) }
         .onSuccess { parsed ->
           if (parsed.pars.any { it.clips.isNotEmpty() }) parsedSmils += parsed
         }
         .onFailure {
+          if (it is kotlinx.coroutines.CancellationException) throw it
           warnings += "Kon ${PathUtils.fileName(smilPath)} niet lezen: ${it.message}"
         }
     }
@@ -75,6 +81,7 @@ class DaisyBookLoader {
     val pendingClips = mutableListOf<PendingClip>()
     val pendingPars = mutableListOf<PendingPar>()
     for (smil in parsedSmils) {
+      currentCoroutineContext().ensureActive()
       for (par in smil.pars) {
         val pendingPar = PendingPar(smil.path, par)
         for (audio in par.clips) {
@@ -91,12 +98,16 @@ class DaisyBookLoader {
       }
     }
 
+    // Build the next-start lookup once instead of scanning all later clips for every missing
+    // clip-end. This turns a book with many open-ended clips from O(n²) into O(n log n).
+    val nextStartByClip = nextStarts(pendingClips)
+
     val clips = mutableListOf<TimelineClip>()
     val timelineByPending = mutableMapOf<PendingClip, TimelineClip>()
     for ((index, pending) in pendingClips.withIndex()) {
+      if (index % 512 == 0) currentCoroutineContext().ensureActive()
       val audio = pending.audio
-      val end =
-        audio.endMs ?: findNextStart(pendingClips, index, pending.sourcePath, audio.startMs)
+      val end = audio.endMs ?: nextStartByClip[index]
       if (end == null || end <= audio.startMs) {
         warnings += "Clip in ${PathUtils.fileName(pending.smilPath)} heeft geen geldige eindtijd."
         continue
@@ -207,7 +218,8 @@ class DaisyBookLoader {
    * Finds the cover without parsing audio or SMIL files. Used to backfill covers for books that
    * were imported before cover support existed.
    */
-  fun findCover(source: BookSource): String? {
+  suspend fun findCover(source: BookSource): String? {
+    currentCoroutineContext().ensureActive()
     val allFiles = source.files().filterNot { it.isDirectory }
     if (allFiles.isEmpty()) return null
 
@@ -217,10 +229,12 @@ class DaisyBookLoader {
 
     val nccFile = findNccFile(allFiles)
     val opfFile = findOpfFile(allFiles, nccFile?.path)
+    currentCoroutineContext().ensureActive()
     val nccCover =
       nccFile?.let { file ->
         runCatching { NccParser.parse(source, file.path).coverPath }.getOrNull()
       }
+    currentCoroutineContext().ensureActive()
     val opfCover =
       opfFile?.let { file ->
         runCatching { OpfParser.parse(source, file.path)?.coverPath }.getOrNull()
@@ -324,20 +338,22 @@ class DaisyBookLoader {
    * Uses the start of a later clip in the same audio file as the end of a clip without
    * clip-end. DAISY 2.02 normally provides clip-end; this fallback only fills a missing value
    * and never reuses the end of an earlier clip.
+   *
+   * Walking backwards while keeping the starts of later clips per file gives the same answer as
+   * scanning the rest of the list for every clip, but without quadratic work for large books.
    */
-  private fun findNextStart(
-    clips: List<PendingClip>,
-    currentIndex: Int,
-    sourcePath: String,
-    startMs: Long,
-  ): Long? {
-    for (index in currentIndex + 1 until clips.size) {
-      val next = clips[index]
-      if (next.sourcePath.equals(sourcePath, true) && next.audio.startMs > startMs) {
-        return next.audio.startMs
-      }
+  private fun nextStarts(clips: List<PendingClip>): Array<Long?> {
+    val result = arrayOfNulls<Long>(clips.size)
+    if (clips.isEmpty()) return result
+    val laterStarts = mutableMapOf<String, TreeSet<Long>>()
+    for (index in clips.indices.reversed()) {
+      val clip = clips[index]
+      val key = PathUtils.normalize(clip.sourcePath).lowercase()
+      val starts = laterStarts.getOrPut(key) { TreeSet() }
+      result[index] = starts.higher(clip.audio.startMs)
+      starts.add(clip.audio.startMs)
     }
-    return null
+    return result
   }
 
   private fun buildSegments(clips: List<TimelineClip>): List<MutableSegment> {
@@ -382,7 +398,10 @@ class DaisyBookLoader {
           if (resolved != null) add(resolved.path)
         }
       }
-    }.getOrDefault(emptyList())
+    }.getOrElse {
+      if (it is kotlinx.coroutines.CancellationException) throw it
+      emptyList()
+    }
   }
 
   private fun formatTime(ms: Long): String {

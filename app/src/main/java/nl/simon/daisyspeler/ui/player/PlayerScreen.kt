@@ -76,12 +76,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.media3.common.Player
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
@@ -144,10 +146,9 @@ fun PlayerScreen(
   var bookmarkLabel by remember { mutableStateOf<String?>(null) }
   val context = LocalContext.current
   val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-  val loading =
-    playback.isLoading || (book == null && playback.loadState != PlaybackLoadState.ERROR)
+  val loading = playback.isLoading
 
-  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshCover() }
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResume() }
 
   LaunchedEffect(error) {
     error?.let {
@@ -192,6 +193,7 @@ fun PlayerScreen(
     if (loading) {
       BookLoadingContent(
         title = currentBook?.title ?: entry?.title,
+        phase = playback.loadPhase,
         onBack = onBack,
         modifier = Modifier.fillMaxSize().padding(padding),
       )
@@ -211,11 +213,16 @@ fun PlayerScreen(
             style = MaterialTheme.typography.titleMedium,
           )
           Text(
-            "Ga terug naar de bibliotheek en probeer het opnieuw.",
+            playback.loadError
+              ?: "De speler kon het boek niet openen. Probeer het opnieuw.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
           )
-          FilledTonalButton(onClick = onBack) { Text("Terug naar bibliotheek") }
+          FilledTonalButton(onClick = viewModel::retryLoad) {
+            Text("Opnieuw proberen")
+          }
+          TextButton(onClick = onBack) { Text("Terug naar bibliotheek") }
         }
       }
       return@Scaffold
@@ -326,6 +333,7 @@ fun PlayerScreen(
 @Composable
 private fun BookLoadingContent(
   title: String?,
+  phase: PlayerLoadPhase,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -349,7 +357,13 @@ private fun BookLoadingContent(
       )
     }
     Text(
-      "Het boek wordt klaargemaakt om te beluisteren. Even geduld.",
+      when (phase) {
+        PlayerLoadPhase.CONNECTING -> "Verbinden met de speler…"
+        PlayerLoadPhase.READING_BOOK -> "Boek inlezen…"
+        PlayerLoadPhase.PREPARING_PLAYER -> "Speler voorbereiden…"
+        PlayerLoadPhase.READY,
+        PlayerLoadPhase.ERROR -> "Het boek wordt klaargemaakt om te beluisteren. Even geduld."
+      },
       style = MaterialTheme.typography.bodyMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       textAlign = TextAlign.Center,
@@ -478,17 +492,58 @@ private fun PlayerContent(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       FilledTonalButton(onClick = { onSeekRelative(-15_000) }) { Text("−15") }
+      val suppressed =
+        playback.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
+      val showPause =
+        playback.playWhenReady && !suppressed && !playback.audioFocusLost
       FilledIconButton(
         onClick = onTogglePlay,
-        modifier = Modifier.size(64.dp),
+        modifier =
+          Modifier.size(64.dp).semantics {
+            stateDescription =
+              when {
+                playback.audioFocusLost -> "Audiofocus verloren. Tik om het opnieuw te proberen."
+                suppressed -> "Wacht op audiofocus. Tik om afspelen te hervatten."
+                playback.isPlaying -> "Afspelen"
+                playback.playWhenReady -> "Bezig met voorbereiden"
+                else -> "Gepauzeerd"
+              }
+          },
       ) {
         Icon(
-          if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-          contentDescription = if (playback.isPlaying) "Pauzeren" else "Afspelen",
+          if (showPause) Icons.Default.Pause else Icons.Default.PlayArrow,
+          contentDescription =
+            when {
+              playback.audioFocusLost -> "Opnieuw afspelen"
+              suppressed -> "Afspelen hervatten"
+              showPause -> "Pauzeren"
+              else -> "Afspelen"
+            },
           modifier = Modifier.size(scaledIconSize(36.dp)),
         )
       }
       FilledTonalButton(onClick = { onSeekRelative(30_000) }) { Text("+30") }
+    }
+
+    if (playback.audioFocusLost) {
+      Text(
+        "De audiofocus is verloren, bijvoorbeeld door een andere app. " +
+          "Tik op afspelen om het opnieuw te proberen.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(top = 8.dp),
+      )
+    } else if (playback.playbackSuppressionReason ==
+      Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
+    ) {
+      Text(
+        "De weergave is tijdelijk onderbroken door een andere app.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(top = 8.dp),
+      )
     }
 
     Spacer(Modifier.height(8.dp))

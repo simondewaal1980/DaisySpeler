@@ -38,7 +38,11 @@ object EmbeddedCoverExtractor {
    * Tries the audio files in playback order and returns the first embedded cover found. The
    * candidate list is bounded so a book with hundreds of files does not open all of them.
    */
-  fun find(source: BookSource, audioPaths: List<String>): EmbeddedCover? {
+  fun find(
+    source: BookSource,
+    audioPaths: List<String>,
+    isCancelled: () -> Boolean = { false },
+  ): EmbeddedCover? {
     val candidates =
       audioPaths
         .asSequence()
@@ -47,6 +51,9 @@ object EmbeddedCoverExtractor {
         .take(MAX_CANDIDATES)
         .toList()
     for (path in candidates) {
+      if (isCancelled()) {
+        throw kotlinx.coroutines.CancellationException("Omslag zoeken geannuleerd.")
+      }
       val cover = runCatching { readTag(source, path) }.getOrNull()
       if (cover != null) return cover
     }
