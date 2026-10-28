@@ -1,0 +1,2213 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DaisySpeler van binnenuit — codeboek voor beginners</title>
+  <meta name="description" content="Een codeboek in beginnerstaal over de mainbranch van DaisySpeler: architectuur, DAISY-parser, bibliotheek, afspelen, bookmarks en tests.">
+  <link rel="icon" href="../icon/app-icon-512.png" type="image/png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#inhoud">Direct naar de inhoud</a>
+
+  <header class="hero">
+    <div class="hero__inner">
+      <div class="hero__copy">
+        <p class="eyebrow">Codeboek · mainbranch · versie 6.0</p>
+        <h1>DaisySpeler<br><em>van binnenuit</em></h1>
+        <p class="hero__lede">
+          Van de eerste tik op een boek tot de laatste noot: lees hoe deze Android-app
+          in elkaar zit. In gewone taal, met kleine stukjes code en veel verwijzingen
+          naar de echte bestanden.
+        </p>
+        <ul class="chips" aria-label="Kenmerken van dit codeboek">
+          <li class="chip">Kotlin</li>
+          <li class="chip">Jetpack Compose</li>
+          <li class="chip">Media3</li>
+          <li class="chip">59 Kotlin-bestanden</li>
+          <li class="chip">main @ 8a1fe33</li>
+        </ul>
+        <p class="hero__note">
+          Geschreven op 28 oktober 2026. De code is de bron; dit boek is de kaart.
+        </p>
+      </div>
+
+      <figure class="hero__card">
+        <div class="hero__icon-wrap">
+          <img src="../icon/app-icon-512.png" alt="Het DaisySpeler-app-icoon: een madeliefje met een play-knop in het hart." width="512" height="512">
+        </div>
+        <figcaption>
+          <strong>DaisySpeler</strong>
+          Een eenvoudige luisterspeler voor DAISY 2.02-boeken.
+        </figcaption>
+      </figure>
+    </div>
+  </header>
+
+  <div class="layout" id="inhoud">
+    <aside class="sidebar">
+      <p class="sidebar__title">Inhoud</p>
+      <nav aria-label="Hoofdstukken">
+        <ol class="toc">
+          <li class="toc__group">Basis</li>
+          <li><a href="#start"><span>01</span> Start hier</a></li>
+          <li><a href="#overzicht"><span>02</span> Het grote plaatje</a></li>
+          <li><a href="#mappen"><span>03</span> De mappen</a></li>
+          <li><a href="#opstarten"><span>04</span> Opstarten</a></li>
+
+          <li class="toc__group">Boeken</li>
+          <li><a href="#bibliotheek"><span>05</span> De bibliotheek</a></li>
+          <li><a href="#importeren"><span>06</span> Boeken importeren</a></li>
+          <li><a href="#daisy"><span>07</span> Een DAISY-boek lezen</a></li>
+          <li><a href="#omslagen"><span>08</span> Omslagen</a></li>
+
+          <li class="toc__group">Luisteren</li>
+          <li><a href="#afspelen"><span>09</span> Afspelen</a></li>
+          <li><a href="#bookmarks"><span>10</span> Bookmarks</a></li>
+          <li><a href="#downloads"><span>11</span> Downloads</a></li>
+
+          <li class="toc__group">Interface en naslag</li>
+          <li><a href="#schermen"><span>12</span> De schermen</a></li>
+          <li><a href="#modellen"><span>13</span> Datamodellen</a></li>
+          <li><a href="#bestanden"><span>14</span> Bestandsgids</a></li>
+          <li><a href="#tests"><span>15</span> Tests</a></li>
+          <li><a href="#woordenboek"><span>16</span> Woordenboek</a></li>
+          <li><a href="#leesroute"><span>17</span> Leesroute</a></li>
+        </ol>
+      </nav>
+    </aside>
+
+    <main class="content">
+
+      <section class="chapter" id="start">
+        <header class="chapter__head">
+          <p class="chapter__no">01</p>
+          <div>
+            <p class="kicker">Begin hier</p>
+            <h2>Start hier</h2>
+            <p class="lede">
+              Je hoeft geen Android-expert te zijn om deze code te begrijpen. Dit boek
+              begint bij wat de app doet en zoomt daarna steeds een laag dieper in.
+            </p>
+          </div>
+        </header>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Voor wie is dit codeboek?</p>
+          <p>
+            Voor iemand die Kotlin een beetje kent, of die gewoon wil snappen hoe een
+            echte Android-app werkt. Je moet weten wat een bestand en een map zijn.
+            Woorden als <em>ViewModel</em>, <em>repository</em> en <em>service</em> worden
+            uitgelegd voordat ze belangrijk worden.
+          </p>
+        </div>
+
+        <h3>Zo lees je dit boek</h3>
+        <ol class="steps">
+          <li>
+            <strong>Lees eerst het verhaal.</strong> Hoofdstuk 2 legt uit welke onderdelen
+            er zijn en hoe ze samenwerken. Je hoeft nog niets uit je hoofd te leren.
+          </li>
+          <li>
+            <strong>Volg één actie.</strong> Kies bijvoorbeeld “een boek openen” en volg
+            die route door de bestanden. Dat werkt beter dan alle bestanden op alfabet
+            lezen.
+          </li>
+          <li>
+            <strong>Kijk naar de codefragmenten.</strong> Ze zijn kort en komen uit de
+            echte code. De bestandsnaam staat erboven, zodat je verder kunt zoeken.
+          </li>
+          <li>
+            <strong>Gebruik de woordenlijst.</strong> Kom je een begrip tegen dat je nog
+            niet kent? Hoofdstuk 16 legt het kort uit.
+          </li>
+        </ol>
+
+        <h3>Wat is DaisySpeler?</h3>
+        <p>
+          DaisySpeler is een Android-app waarmee je luisterboeken in het
+          <strong>DAISY 2.02</strong>-formaat kunt openen en beluisteren. Je kunt een
+          uitgepakte boekmap kiezen, een ZIP-bestand importeren of een boek downloaden
+          via de ingebouwde boekbrowser. De app onthoudt waar je gebleven bent, maakt
+          bookmarks en kan op de achtergrond doorspelen.
+        </p>
+
+        <div class="grid grid--2">
+          <article class="mini-card">
+            <h4>Wat de app wél doet</h4>
+            <ul class="checklist">
+              <li>DAISY 2.02 lezen: <code>ncc.html</code>, optioneel <code>book.opf</code> en SMIL-bestanden.</li>
+              <li>Losse audioclips aan elkaar plakken tot één doorlopende tijdlijn.</li>
+              <li>Hoofdstukken, pagina's, bookmarks en een slaaptimer tonen.</li>
+              <li>Op de achtergrond afspelen via een media-sessie en melding.</li>
+            </ul>
+          </article>
+          <article class="mini-card">
+            <h4>Wat de app níet doet</h4>
+            <ul class="crosslist">
+              <li>Geen DAISY 3 of andere luisterboekformaten.</li>
+              <li>Geen gesynchroniseerde tekstweergave tijdens het luisteren.</li>
+              <li>Geen brede toegang tot al je bestanden: de app werkt met wat jij kiest.</li>
+              <li>Geen account bij DaisySpeler zelf: luistergegevens blijven lokaal.</li>
+            </ul>
+          </article>
+        </div>
+
+        <h3>De drie getallen om te onthouden</h3>
+        <div class="stat-row">
+          <div class="stat">
+            <strong>6.0</strong>
+            <span>app-versie</span>
+          </div>
+          <div class="stat">
+            <strong>59</strong>
+            <span>Kotlin-bestanden in de app</span>
+          </div>
+          <div class="stat">
+            <strong>±9.500</strong>
+            <span>regels code in <code>app/src/main/java</code></span>
+          </div>
+        </div>
+        <p class="small">
+          De aantallen komen uit de mainbranch op het moment van schrijven. Ze veranderen
+          zodra iemand code toevoegt of verwijdert.
+        </p>
+      </section>
+
+      <section class="chapter" id="overzicht">
+        <header class="chapter__head">
+          <p class="chapter__no">02</p>
+          <div>
+            <p class="kicker">Het grote plaatje</p>
+            <h2>Een bibliotheek met een geluidsstudio</h2>
+            <p class="lede">
+              De app bestaat uit vier duidelijke rollen. Als je die uit elkaar houdt,
+              wordt de code veel minder eng.
+            </p>
+          </div>
+        </header>
+
+        <div class="analogy">
+          <div class="analogy__item">
+            <span class="analogy__icon" aria-hidden="true">▤</span>
+            <h3>De balie</h3>
+            <p><strong>De schermen.</strong> Hier tik je op knoppen en zie je de boeken. De UI bezit geen audio en leest geen bestanden.</p>
+          </div>
+          <div class="analogy__item">
+            <span class="analogy__icon" aria-hidden="true">☷</span>
+            <h3>De receptionist</h3>
+            <p><strong>De ViewModels.</strong> Ze vertalen een tik naar een opdracht en houden bij wat het scherm moet tonen.</p>
+          </div>
+          <div class="analogy__item">
+            <span class="analogy__icon" aria-hidden="true">▦</span>
+            <h3>Het magazijn</h3>
+            <p><strong>Repositories en parsers.</strong> Ze vinden, lezen, controleren en bewaren boeken, bookmarks en instellingen.</p>
+          </div>
+          <div class="analogy__item">
+            <span class="analogy__icon" aria-hidden="true">◉</span>
+            <h3>De studio</h3>
+            <p><strong>De playback-service.</strong> Die bezit de echte speler en blijft doorspelen als het scherm weg is.</p>
+          </div>
+        </div>
+
+        <h3>De lagen onder elkaar</h3>
+        <div class="layer-stack" role="img" aria-label="Van boven naar beneden: UI, ViewModel, repositories en parser, opslag. De playback-service staat naast de ViewModel-laag.">
+          <div class="layer layer--ui">
+            <span class="layer__label">UI</span>
+            <span>Compose-schermen: bibliotheek, speler, browser, over-scherm</span>
+          </div>
+          <div class="layer layer--vm">
+            <span class="layer__label">ViewModels</span>
+            <span>State, gebruikersacties en verbinding met de speler</span>
+          </div>
+          <div class="layer layer--data">
+            <span class="layer__label">Data</span>
+            <span>Repositories, parsers, import, download en opslag</span>
+          </div>
+          <div class="layer layer--disk">
+            <span class="layer__label">Opslag</span>
+            <span>JSON-bestanden, app-mappen, SAF-map of ZIP-uitpakmap</span>
+          </div>
+        </div>
+
+        <p>
+          De <strong>playback-service</strong> staat een beetje apart. Hij hoort niet bij
+          één scherm: hij kan blijven draaien terwijl de app op de achtergrond staat. De
+          UI praat met die service via een <em>MediaController</em>. Dat is een soort
+          afstandsbediening met een vaste set opdrachten.
+        </p>
+
+        <h3>Wat is DAISY eigenlijk?</h3>
+        <div class="callout callout--note">
+          <p class="callout__title">DAISY in één alinea</p>
+          <p>
+            DAISY staat voor <em>Digital Accessible Information System</em>: een standaard
+            voor toegankelijke luisterboeken. Een DAISY 2.02-boek is niet één groot
+            audiobestand, maar een map met een inhoudsopgave
+            (<code>ncc.html</code>), kleine navigatie- en audioaanwijzingen
+            (<code>.smil</code>) en één of meer audiobestanden. DaisySpeler leest die
+            aanwijzingen en bouwt daar één doorlopende luisterervaring van.
+          </p>
+        </div>
+
+        <h3>Wat zit er in een boekmap?</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Bestand</th><th>Wat het is</th><th>Wat de app ermee doet</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>ncc.html</code></td><td>Inhoudsopgave en informatie over het boek.</td><td>Titel, auteur, taal, navigatiepunten en omslag lezen.</td></tr>
+              <tr><td><code>book.opf</code></td><td>Optionele pakketbeschrijving.</td><td>Extra metadata, volgorde van SMIL-bestanden en omslaginformatie lezen.</td></tr>
+              <tr><td><code>*.smil</code></td><td>Koppeling tussen een stuk tekst en een stuk audio.</td><td>Per <code>&lt;par&gt;</code> lezen welke audio wanneer start en stopt.</td></tr>
+              <tr><td><code>*.mp3</code>, <code>*.wav</code></td><td>De echte audio.</td><td>Als playlist aan ExoPlayer geven, met begin- en eindpunt per segment.</td></tr>
+              <tr><td>Afbeeldingen</td><td>Omslag of illustraties.</td><td>Omslag opsporen en lokaal bewaren.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>De reis van één boek</h3>
+        <ol class="flow">
+          <li class="flow__step">
+            <span class="flow__num">1</span>
+            <strong>Kiezen</strong>
+            <span>De gebruiker tikt op een boek in de bibliotheek.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">2</span>
+            <strong>Laden</strong>
+            <span>De repository leest het boek en de parser maakt een <code>DaisyBook</code>.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">3</span>
+            <strong>Klaarzetten</strong>
+            <span>De service bouwt media-items en zet de speler op de opgeslagen positie.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">4</span>
+            <strong>Spelen</strong>
+            <span>ExoPlayer speelt de segmenten als één doorlopende lijst af.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">5</span>
+            <strong>Onthouden</strong>
+            <span>Positie en bookmarks worden lokaal opgeslagen.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="chapter" id="mappen">
+        <header class="chapter__head">
+          <p class="chapter__no">03</p>
+          <div>
+            <p class="kicker">De plattegrond</p>
+            <h2>Waar staat wat?</h2>
+            <p class="lede">
+              De mappen volgen de belangrijkste vraag van de app: waar komt een boek
+              vandaan, hoe wordt het gelezen en hoe klinkt het?
+            </p>
+          </div>
+        </header>
+
+        <pre class="tree"><code>DaisySpeler/
+├── app/
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml          app aanmelden bij Android
+│       │   ├── java/nl/simon/daisyspeler/
+│       │   │   ├── DaisyApplication.kt      startpunt van de app
+│       │   │   ├── AppContainer.kt          alle vaste onderdelen aanmaken
+│       │   │   ├── MainActivity.kt          het eerste scherm starten
+│       │   │   ├── Navigation.kt            schermen aan elkaar knopen
+│       │   │   ├── data/                    boeken, opslag, import
+│       │   │   ├── playback/                de muziekmotor
+│       │   │   ├── ui/                      schermen en vormgeving
+│       │   │   └── util/                    datum- en tijdformattering
+│       │   └── res/                         app-naam, thema, iconen
+│       ├── test/                            snelle unit tests
+│       └── androidTest/                     tests op een toestel/emulator
+├── docs/
+│   ├── regression-tests.md                  testafspraken
+│   └── codeboek/                            dit codeboek
+├── gradle/libs.versions.toml                versies van bibliotheken
+└── README.md                                gebruikershandleiding</code></pre>
+
+        <h3>De belangrijkste pakketten</h3>
+        <div class="table-wrap">
+          <table class="package-table">
+            <thead>
+              <tr><th>Map</th><th>Rol</th><th>Beginnerstip</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>data/book/</code></td>
+                <td>De dataclasses die een boek voorstellen.</td>
+                <td>Begin bij <code>Models.kt</code>; daar leer je de woordenschat van de app.</td>
+              </tr>
+              <tr>
+                <td><code>data/parser/</code></td>
+                <td>NCC, OPF en SMIL lezen en omzetten naar één tijdlijn.</td>
+                <td>Lees <code>DaisyBookLoader.kt</code> van boven naar beneden.</td>
+              </tr>
+              <tr>
+                <td><code>data/storage/</code></td>
+                <td>Bibliotheek, bookmarks, slaaptimer en voorkeuren bewaren.</td>
+                <td>Kijk eerst naar de kleine <code>JsonFileStore.kt</code>.</td>
+              </tr>
+              <tr>
+                <td><code>data/importer/</code></td>
+                <td>ZIP-bestanden veilig uitpakken.</td>
+                <td>Lees de beveiligingschecks in <code>ZipBookExtractor.kt</code>.</td>
+              </tr>
+              <tr>
+                <td><code>data/download/</code></td>
+                <td>Boekbrowser-downloads en automatische import.</td>
+                <td>Volg één download van <code>enqueue</code> tot <code>importCompleted</code>.</td>
+              </tr>
+              <tr>
+                <td><code>data/source/</code></td>
+                <td>Eén interface voor een SAF-map en een uitgepakte ZIP-map.</td>
+                <td>Dit is een mooi voorbeeld van een abstractie.</td>
+              </tr>
+              <tr>
+                <td><code>playback/</code></td>
+                <td>ExoPlayer, MediaSession, bookmarks en slaaptimer aansturen.</td>
+                <td>Het grootste bestand; lees het in hoofdstuk 9 met een route.</td>
+              </tr>
+              <tr>
+                <td><code>ui/</code></td>
+                <td>Compose-schermen, ViewModels en thema.</td>
+                <td>Kies één scherm en volg de knop die je interesseert.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>De bouwstenen</h3>
+        <p>
+          De belangrijkste technische keuzes staan in <code>app/build.gradle.kts</code> en
+          <code>gradle/libs.versions.toml</code>. Je hoeft ze niet uit je hoofd te kennen,
+          maar het helpt om te weten waarom een bestand bepaalde imports heeft.
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Onderdeel</th><th>Keuze in dit project</th><th>Waarvoor</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Taal</td><td>Kotlin 2.3.20</td><td>De hele app, inclusief de UI.</td></tr>
+              <tr><td>UI</td><td>Jetpack Compose + Material 3</td><td>Schermen als Kotlin-functies, zonder XML-layouts.</td></tr>
+              <tr><td>Navigatie</td><td>Navigation 3</td><td>Routes en de terug-stack tussen schermen.</td></tr>
+              <tr><td>Audio</td><td>Media3 / ExoPlayer</td><td>Afspelen, mediasessies, meldingen en achtergrondbediening.</td></tr>
+              <tr><td>HTML en XML</td><td>jsoup + W3C DOM</td><td>NCC lezen met jsoup; OPF en SMIL met de DOM-parser.</td></tr>
+              <tr><td>JSON</td><td>kotlinx.serialization</td><td>Bibliotheek, bookmarks en slaaptimer bewaren.</td></tr>
+              <tr><td>Android-versies</td><td>minSdk 24, target/compile 36</td><td>Draait op Android 7.0 en nieuwer.</td></tr>
+              <tr><td>Build</td><td>Gradle + JDK 17</td><td>Compileren, testen en een APK maken.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Zelf bouwen</p>
+          <p>
+            Met JDK 17 en Android SDK 36 bouw je de app met
+            <code>./gradlew :app:testDebugUnitTest :app:assembleDebug</code>. De APK komt
+            daarna in <code>app/build/outputs/apk/debug/app-debug.apk</code>.
+          </p>
+        </div>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Tip: zoek op gedrag, niet op bestandsnaam</p>
+          <p>
+            Weet je niet waar iets gebeurt? Zoek in je editor op een stukje tekst dat je
+            in de app ziet, bijvoorbeeld <code>Verder luisteren</code> of
+            <code>SLEEP_TIMER</code>. Vaak kom je sneller bij de juiste code dan door
+            willekeurig mappen te openen.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="opstarten">
+        <header class="chapter__head">
+          <p class="chapter__no">04</p>
+          <div>
+            <p class="kicker">Van tik naar scherm</p>
+            <h2>Opstarten en navigeren</h2>
+            <p class="lede">
+              Android begint niet bij het eerste scherm, maar bij de
+              <code>Application</code>. Daarna maakt de app één container met alle
+              gedeelde onderdelen.
+            </p>
+          </div>
+        </header>
+
+        <h3>Stap 1: de Application</h3>
+        <p>
+          <code>DaisyApplication</code> is het eerste object dat Android voor de app
+          aanmaakt. Hier wordt <code>AppContainer</code> gebouwd. Die container leeft
+          zolang het app-proces leeft.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/DaisyApplication.kt</p>
+          <pre><code>class DaisyApplication : Application() {
+  lateinit var container: AppContainer
+    private set
+
+  override fun onCreate() {
+    super.onCreate()
+    container = AppContainer(this)
+  }
+}</code></pre>
+        </div>
+
+        <h3>Stap 2: de container</h3>
+        <p>
+          <code>AppContainer</code> is geen Android-onderdeel, maar een gewoon Kotlin-object.
+          Het maakt de repositories, de importer, de downloader en de slaaptimer één keer
+          aan. Elk scherm krijgt dezelfde container mee. Zo weet iedereen bij dezelfde
+          bibliotheek en dezelfde instellingen.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/AppContainer.kt (ingekort)</p>
+          <pre><code>val libraryRepository = LibraryRepository(File(filesDir, "library.json"))
+val bookmarkRepository = BookmarkRepository(File(filesDir, "bookmarks.json"))
+val sleepTimerManager = SleepTimerManager(File(filesDir, "sleep_timer.json"))
+val uiPreferences = UiPreferences(context)
+val bookRepository = BookRepository(context, libraryRepository)
+val bookImporter = BookImporter(bookRepository, libraryRepository)
+val audiobookDownloads = AudiobookDownloads(context, uiPreferences)</code></pre>
+        </div>
+
+        <p>
+          In dezelfde container wordt ook een <code>BroadcastReceiver</code> aangemeld.
+          Die luistert naar het systeem als een download klaar is. Zo kan een boek
+          automatisch in de bibliotheek belanden, ook als de boekbrowser al dicht is.
+        </p>
+
+        <h3>Stap 3: de Activity</h3>
+        <p>
+          <code>MainActivity</code> zet de Compose-interface klaar. Op Android 13 en
+          nieuwer vraagt de app één keer om meldingen te mogen tonen. Daarna start
+          <code>MainNavigation</code>.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/MainActivity.kt (ingekort)</p>
+          <pre><code>val container = (application as DaisyApplication).container
+setContent {
+  DaisySpelerTheme {
+    MainNavigation(
+      container = container,
+      onExit = { finishAndRemoveTask() },
+    )
+  }
+}</code></pre>
+        </div>
+
+        <h3>Stap 4: navigatie</h3>
+        <p>
+          De app gebruikt Navigation 3. Elke bestemming is een klein, serialiseerbaar
+          object. De backstack bepaalt welk scherm je ziet. Als je vanuit de speler
+          teruggaat, vraagt de navigatie eerst aan de playback-service om het boek netjes
+          te stoppen.
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Route</th><th>Scherm</th><th>Bijzonderheid</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>LibraryRoute</code></td><td>Bibliotheek</td><td>Startpunt van de app.</td></tr>
+              <tr><td><code>PlayerRoute(bookId)</code></td><td>Speler</td><td>Weet welk boek geopend moet worden.</td></tr>
+              <tr><td><code>CoverBrowserRoute(bookId)</code></td><td>Omslag zoeken</td><td>Opent Google Afbeeldingen voor één boek.</td></tr>
+              <tr><td><code>BookBrowserRoute(site)</code></td><td>Boekbrowser</td><td>Opent één van de twee ondersteunde boekwebsites.</td></tr>
+              <tr><td><code>AboutRoute</code></td><td>Over DaisySpeler</td><td>Versie, help en licentie.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Waarom een container in plaats van een framework?</p>
+          <p>
+            De app is klein genoeg om dependencies met de hand te maken. Dat is
+            beginnersvriendelijk: je kunt in één bestand zien welke onderdelen bestaan.
+            Bij een grotere app zou je waarschijnlijk een dependency-injection-framework
+            gebruiken.
+          </p>
+        </div>
+
+        <div class="callout callout--warn">
+          <p class="callout__title">Let op: de container is geen wondermiddel</p>
+          <p>
+            Een repository die in de container zit, blijft bestaan zolang het proces
+            leeft. Grote objecten zoals een volledig geparsed boek worden daarom apart
+            gecachet en weer vergeten als de speler het boek loslaat.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="bibliotheek">
+        <header class="chapter__head">
+          <p class="chapter__no">05</p>
+          <div>
+            <p class="kicker">De boekenplank</p>
+            <h2>De bibliotheek</h2>
+            <p class="lede">
+              De bibliotheek is een lijst met boekgegevens. Die lijst wordt als JSON
+              bewaard en via een <code>StateFlow</code> aan de schermen gegeven.
+            </p>
+          </div>
+        </header>
+
+        <h3>Eén boek in de lijst</h3>
+        <p>
+          Een <code>LibraryEntry</code> is de administratie van een boek. Niet de audio
+          zelf, maar de gegevens die de boekenplank nodig heeft.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/storage/StorageModels.kt</p>
+          <pre><code>@Serializable
+data class LibraryEntry(
+  val id: String,
+  val treeUri: String,
+  val title: String,
+  val author: String?,
+  val durationMs: Long,
+  val tocCount: Int,
+  val addedAtEpochMs: Long,
+  val lastPosition: BookPosition? = null,
+  val lastReadAtEpochMs: Long? = null,
+  val sourceType: LibrarySourceType = LibrarySourceType.FOLDER,
+  val localDir: String? = null,
+  val coverPath: String? = null,
+)</code></pre>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Veld</th><th>Betekenis voor een beginner</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>Een korte code die dit boek uniek maakt.</td></tr>
+              <tr><td><code>treeUri</code></td><td>De verwijzing naar de gekozen map of het ZIP-bestand.</td></tr>
+              <tr><td><code>title</code>, <code>author</code></td><td>Wat op de boekenplank staat.</td></tr>
+              <tr><td><code>durationMs</code></td><td>Totale luisterduur in milliseconden.</td></tr>
+              <tr><td><code>lastPosition</code></td><td>Waar je gebleven bent: bronbestand, offset en globale tijd.</td></tr>
+              <tr><td><code>lastReadAtEpochMs</code></td><td>Wanneer je het boek voor het laatst opende; gebruikt voor sorteren.</td></tr>
+              <tr><td><code>sourceType</code></td><td>Map of ZIP. Bepaalt hoe de app het boek later terugvindt.</td></tr>
+              <tr><td><code>localDir</code></td><td>Bij een ZIP: de uitgepakte map in app-eigen opslag.</td></tr>
+              <tr><td><code>coverPath</code></td><td>Pad naar de lokale omslagafbeelding.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>De route door de code</h3>
+        <ol class="route">
+          <li><code>LibraryScreen.kt</code> toont de boeken en de knoppen.</li>
+          <li><code>LibraryViewModel.kt</code> combineert de boekenlijst met de gekozen sortering.</li>
+          <li><code>LibraryRepository.kt</code> bewaart elke wijziging in <code>library.json</code>.</li>
+          <li><code>JsonFileStore.kt</code> schrijft eerst naar een tijdelijk bestand en hernoemt dat daarna.</li>
+        </ol>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Wat is een StateFlow?</p>
+          <p>
+            Een <code>StateFlow</code> is een houder met een actuele waarde. Als de
+            waarde verandert, krijgen schermen die meelezen automatisch een update.
+            Daardoor hoeft de UI niet steeds zelf te vragen: “is er nog iets veranderd?”
+          </p>
+        </div>
+
+        <h3>Sorteren</h3>
+        <p>
+          De boekenplank kan alfabetisch of op “laatst gelezen” sorteren. Alfabetisch
+          gebruikt een Nederlandse collator, zodat bijvoorbeeld “ij” en “y” netjes
+          worden vergeleken. Bij “laatst gelezen” komen boeken die je al eens opende
+          eerst; daarna telt wanneer ze zijn toegevoegd.
+        </p>
+        <p>
+          De sorteervolgorde verandert niets aan de opgeslagen lijst. Alleen de weergave
+          wordt gesorteerd. De keuze zelf wordt in SharedPreferences bewaard.
+        </p>
+
+        <h3>Een boek verwijderen</h3>
+        <p>
+          Verwijderen is meer dan één regel uit de lijst halen. De app:
+        </p>
+        <ol class="numbered">
+          <li>stopt het boek in de playback-service als het daar openstaat;</li>
+          <li>verwijdert de bookmarks van dat boek;</li>
+          <li>gooit de geparseerde versie uit het geheugen;</li>
+          <li>verwijdert bij een ZIP-import de uitgepakte bestanden en de omslag;</li>
+          <li>geeft bij een mapimport de tijdelijke leestoestemming weer vrij.</li>
+        </ol>
+        <p>
+          Het originele ZIP-bestand en een gekozen map blijven altijd staan. De app
+          ruimt alleen haar eigen kopieën op.
+        </p>
+
+        <h3>Opnieuw importeren</h3>
+        <p>
+          Importeer je dezelfde map opnieuw, dan leest de app de actuele inhoud. De knop
+          “Verder luisteren” en een bestaande omslag blijven bewaard. Dat gebeurt in
+          <code>LibraryRepository.addOrUpdate</code>: oude velden worden alleen
+          overgenomen als de nieuwe import ze niet meebrengt.
+        </p>
+      </section>
+
+      <section class="chapter" id="importeren">
+        <header class="chapter__head">
+          <p class="chapter__no">06</p>
+          <div>
+            <p class="kicker">Van buiten naar binnen</p>
+            <h2>Boeken importeren</h2>
+            <p class="lede">
+              Er zijn twee deuren naar de bibliotheek: een uitgepakte map kiezen of een
+              ZIP-bestand kiezen. Daarachter komt alles samen in dezelfde importeur.
+            </p>
+          </div>
+        </header>
+
+        <div class="grid grid--2">
+          <article class="door door--folder">
+            <p class="door__tag">Deur 1</p>
+            <h3>Een map kiezen</h3>
+            <p>
+              Via de Android-mapkiezer (Storage Access Framework) kiest de gebruiker de
+              uitgepakte DAISY-map. De app vraagt om blijvende leestoegang, zodat het boek
+              later opnieuw geopend kan worden.
+            </p>
+            <p class="small">
+              Wordt de map verplaatst of verwijderd, dan kan de app het boek niet meer
+              openen. De app maakt geen kopie van een mapimport.
+            </p>
+          </article>
+          <article class="door door--zip">
+            <p class="door__tag">Deur 2</p>
+            <h3>Een ZIP-bestand kiezen</h3>
+            <p>
+              De app pakt het ZIP-bestand uit naar haar eigen opslag, leest het boek en
+              bewaart de uitgepakte map. Daarna speelt het boek net als een mapimport.
+            </p>
+            <p class="small">
+              Het originele ZIP-bestand blijft staan. Bij verwijderen uit de bibliotheek
+              ruimt de app alleen de uitgepakte kopie op.
+            </p>
+          </article>
+        </div>
+
+        <h3>Dezelfde ingang voor beide deuren</h3>
+        <p>
+          <code>BookImporter</code> is expres klein. Het kiest de juiste importmethode en
+          zet daarna de boekgegevens in de bibliotheek. De boekbrowser gebruikt dezelfde
+          importeur, zodat een handmatige import en een download zich hetzelfde gedragen.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/BookImporter.kt (ingekort)</p>
+          <pre><code>val loaded =
+  if (isZip) bookRepository.importZip(uri)
+  else bookRepository.importTree(uri.toString())
+
+libraryRepository.addOrUpdate(
+  LibraryEntry(
+    id = loaded.id,
+    treeUri = uri.toString(),
+    title = book.title.ifBlank { "Naamloos boek" },
+    author = book.author,
+    durationMs = book.totalDurationMs,
+    sourceType = if (isZip) LibrarySourceType.ZIP else LibrarySourceType.FOLDER,
+    localDir = loaded.localDir,
+    coverPath = loaded.coverPath,
+  )
+)</code></pre>
+        </div>
+
+        <h3>Een ZIP uitpakken is beveiligingswerk</h3>
+        <p>
+          Een ZIP-bestand komt van buiten de app. De inhoud kan kwaadwillende paden
+          bevatten, zoals <code>../../belangrijk-bestand</code>. <code>ZipBookExtractor</code>
+          controleert daarom elk pad voordat er iets wordt geschreven.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/importer/ZipBookExtractor.kt</p>
+          <pre><code>val parts = name.split('/').filter { it.isNotEmpty() &amp;&amp; it != "." }
+if (parts.isEmpty()) return null
+if (parts.any { it == ".." }) {
+  throw ZipImportException("Het ZIP-bestand bevat een onveilig bestandspad.")
+}</code></pre>
+        </div>
+
+        <p>Verder gelden deze grenzen:</p>
+        <ul class="checklist">
+          <li>Geen absolute paden en geen <code>..</code> in de bestandsnaam.</li>
+          <li>Verborgen bestanden en de map <code>__MACOSX</code> worden overgeslagen.</li>
+          <li>Maximaal 50.000 bestanden en 8 GiB uitgepakte data.</li>
+          <li>De app controleert of er genoeg vrije ruimte is.</li>
+          <li>Bij een fout wordt de tijdelijke map opgeruimd en waar mogelijk de oude versie teruggezet.</li>
+        </ul>
+
+        <h3>Veilig vervangen</h3>
+        <p>
+          Bij een nieuwe import van hetzelfde ZIP-bestand gebruikt de app drie mappen:
+          <code>id.tmp</code> voor het uitpakken, <code>id</code> voor de actieve versie en
+          <code>id.backup</code> voor de oude versie. Eerst wordt alles uitgepakt en
+          geparsed. Pas als dat lukt, wordt de oude map opzijgeschoven en de nieuwe
+          actief. Gaat er iets mis, dan kan de oude map terugkomen.
+        </p>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Waarom een tijdelijke map?</p>
+          <p>
+            Stel je voor dat je een boek aan het vervangen bent en de app wordt halverwege
+            afgesloten. Zonder tijdelijke map zou je een half uitgepakt boek houden. Met
+            de temporary-map blijft de oude, werkende versie staan tot de nieuwe klaar is.
+          </p>
+        </div>
+
+        <h3>Dezelfde code voor map en ZIP</h3>
+        <p>
+          De parser wil niet weten of een boek in een SAF-map of in app-opslag staat. Beide
+          gevallen implementeren dezelfde kleine interface:
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/source/BookSource.kt</p>
+          <pre><code>interface BookSource {
+  fun files(): List&lt;SourceFile&gt;
+  fun open(path: String): InputStream
+
+  /** Returns a URI string that ExoPlayer can open. */
+  fun playableUri(path: String): String
+}</code></pre>
+        </div>
+
+        <p>
+          <code>SafBookSource</code> gebruikt de Android-contentresolver en
+          <code>FileBookSource</code> gebruikt gewone bestanden. De parser en de speler
+          werken met allebei via dezelfde drie functies. Dat is het nut van een abstractie:
+          één afspraak, meerdere uitvoeringen.
+        </p>
+
+        <h3>Waarom een boek-ID een hash is</h3>
+        <p>
+          Een map-URI kan lang en bijzonder zijn. De app maakt daar met SHA-256 een korte,
+          stabiele code van. Voor een ZIP wordt <code>zip:</code> vóór de URI gezet, zodat
+          een map en een ZIP nooit dezelfde ID krijgen.
+        </p>
+
+        <h3>Importeren en tegelijk een ander boek openen</h3>
+        <p>
+          De repository gebruikt een <em>lock per boek</em> en een aparte
+          <em>importpoort</em>. Een grote import van boek A hoeft het openen van boek B
+          daardoor niet tegen te houden. Imports onderling worden wel na elkaar gedaan,
+          zodat twee ZIP-bestanden niet tegelijk dezelfde mappen proberen te vervangen.
+        </p>
+
+        <div class="callout callout--warn">
+          <p class="callout__title">Een fout is geen ramp</p>
+          <p>
+            Als een nieuwe import mislukt, probeert de app de vorige versie te herstellen.
+            Lukt ook dat niet, dan blijft de fout zichtbaar in de bibliotheek. De app
+            probeert nooit stilletjes een half boek te openen.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="daisy">
+        <header class="chapter__head">
+          <p class="chapter__no">07</p>
+          <div>
+            <p class="kicker">Het hart van de app</p>
+            <h2>Een DAISY-boek lezen</h2>
+            <p class="lede">
+              De parser verandert een map met losse aanwijzingen in één
+              <code>DaisyBook</code> met een doorlopende tijdlijn en een inhoudsopgave.
+            </p>
+          </div>
+        </header>
+
+        <h3>Eerst de vorm van een SMIL-bestand</h3>
+        <p>
+          Een SMIL-bestand zegt: “dit stuk tekst hoort bij dit stuk audio”. Hieronder staat
+          een vereenvoudigd voorbeeld. De echte bestanden kunnen meer elementen bevatten.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">Vereenvoudigd DAISY 2.02 SMIL-fragment</p>
+          <pre><code>&lt;smil&gt;
+  &lt;body&gt;
+    &lt;par&gt;
+      &lt;text src="page.html#p1" /&gt;
+      &lt;audio src="audio/part01.mp3"
+             clip-begin="npt=0.000s"
+             clip-end="npt=12.345s" /&gt;
+    &lt;/par&gt;
+  &lt;/body&gt;
+&lt;/smil&gt;</code></pre>
+        </div>
+
+        <p>
+          Eén <code>&lt;par&gt;</code> koppelt een tekstfragment aan één audioclip. Een boek
+          heeft er vaak honderden of duizenden. DaisySpeler leest ze allemaal en plakt
+          naburige clips aan elkaar.
+        </p>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Wat betekent <code>npt=</code>?</p>
+          <p>
+            <code>npt</code> staat voor <em>normal play time</em>: een tijd binnen het
+            audiobestand. <code>npt=12.345s</code> betekent 12,345 seconde;
+            <code>npt=01:02.345</code> betekent 1 minuut en 2,345 seconde.
+            <code>TimeParser</code> zet die notatie om naar milliseconden.
+          </p>
+        </div>
+
+        <h3>De parser in acht stappen</h3>
+        <ol class="steps">
+          <li>
+            <strong>Bestanden inventariseren.</strong> De loader maakt een lijst van alle
+            bestanden en een index waarbij hoofdletters geen verschil maken.
+          </li>
+          <li>
+            <strong><code>ncc.html</code> vinden.</strong> De app kiest de ondiepst
+            gelegen NCC. Zonder NCC stopt de import met een duidelijke fout.
+          </li>
+          <li>
+            <strong>NCC lezen.</strong> Titel, auteur, taal, totale tijd, navigatiepunten
+            en een eventuele omslag komen binnen via <code>NccParser</code>.
+          </li>
+          <li>
+            <strong>OPF lezen, als die er is.</strong> <code>OpfParser</code> levert extra
+            metadata, de volgorde van SMIL-bestanden en soms een betere omslag.
+          </li>
+          <li>
+            <strong>SMIL-bestanden ordenen.</strong> Eerst de OPF-spine, dan de NCC-volgorde,
+            dan een eventueel <code>er_book_info.xml</code> en ten slotte de rest.
+          </li>
+          <li>
+            <strong>Cliplijst maken.</strong> Elk audioclip wordt aan een echt bestand
+            gekoppeld. Ontbreekt een eindtijd, dan zoekt de parser de start van een latere
+            clip in hetzelfde audiobestand.
+          </li>
+          <li>
+            <strong>Segmenten bouwen.</strong> Aangrenzende clips uit hetzelfde bestand
+            worden samengevoegd. Elk segment krijgt een plek op de globale tijdlijn.
+          </li>
+          <li>
+            <strong>Navigatie koppelen.</strong> Elk NCC-punt wordt aan een segment en een
+            offset gekoppeld. Lukt dat niet, dan maakt de app een eenvoudige indeling per
+            audiobestand.
+          </li>
+        </ol>
+
+        <h3>Het resultaat: DaisyBook</h3>
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/book/Models.kt (ingekort)</p>
+          <pre><code>data class DaisyBook(
+  val title: String,
+  val author: String?,
+  val language: String?,
+  val totalDurationMs: Long,
+  val segments: List&lt;AudioSegment&gt;,
+  val toc: List&lt;NavPoint&gt;,
+  val warnings: List&lt;String&gt; = emptyList(),
+  val coverPath: String? = null,
+)</code></pre>
+        </div>
+
+        <p>
+          De inhoudsopgave is een lijst <code>NavPoint</code>-objecten. Elk punt heeft een
+          <code>type</code>, zodat de app koppen en pagina's anders kan tonen:
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Betekenis</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>HEADING</code></td><td>Een hoofdstuk of kop.</td></tr>
+              <tr><td><code>PAGE</code></td><td>Een paginanummer uit het boek.</td></tr>
+              <tr><td><code>SIDEBAR</code></td><td>Een zijbalk of extra tekstblok.</td></tr>
+              <tr><td><code>FOOTNOTE</code></td><td>Een voetnoot.</td></tr>
+              <tr><td><code>PRODNOTE</code></td><td>Een producentnotitie, bijvoorbeeld over de opname.</td></tr>
+              <tr><td><code>OTHER</code></td><td>Overige navigatie, zoals een aantekening.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>
+          Een <code>AudioSegment</code> is één stuk audio uit één bestand. Het heeft twee
+          soorten tijden: waar het stuk in het bronbestand ligt en waar het op de
+          doorlopende boek-tijdlijn staat.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/book/Models.kt</p>
+          <pre><code>data class AudioSegment(
+  val index: Int,
+  val sourcePath: String,
+  val clipStartMs: Long,
+  val clipEndMs: Long,
+  val trackStartMs: Long,
+) {
+  val durationMs: Long
+    get() = max(0L, clipEndMs - clipStartMs)
+}</code></pre>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Veld</th><th>Voorbeeld</th><th>Wat het betekent</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>index</code></td><td><code>2</code></td><td>De derde stap in de playlist.</td></tr>
+              <tr><td><code>sourcePath</code></td><td><code>audio/part01.mp3</code></td><td>Het audiobestand waarin dit stuk staat.</td></tr>
+              <tr><td><code>clipStartMs</code></td><td><code>120.000</code></td><td>Waar het stuk in dat bestand begint.</td></tr>
+              <tr><td><code>clipEndMs</code></td><td><code>135.000</code></td><td>Waar het stuk in dat bestand stopt.</td></tr>
+              <tr><td><code>trackStartMs</code></td><td><code>240.000</code></td><td>Waar het stuk op de globale boek-tijdlijn begint.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>De tijdlijn in beeld</h3>
+        <div class="timeline" role="img" aria-label="Drie segmenten. Segment 1 loopt van 0 tot 2 minuten, segment 2 van 2 tot 4 minuten en segment 3 van 4 tot 5 minuten op de globale tijdlijn.">
+          <div class="timeline__bar">
+            <div class="timeline__seg timeline__seg--a" style="--w: 38%">
+              <strong>Deel 1</strong>
+              <span>0:00–2:00</span>
+            </div>
+            <div class="timeline__seg timeline__seg--b" style="--w: 40%">
+              <strong>Deel 2</strong>
+              <span>2:00–4:00</span>
+            </div>
+            <div class="timeline__seg timeline__seg--c" style="--w: 22%">
+              <strong>Deel 3</strong>
+              <span>4:00–5:00</span>
+            </div>
+          </div>
+          <div class="timeline__labels">
+            <span>0:00</span>
+            <span>2:00</span>
+            <span>4:00</span>
+            <span>5:00</span>
+          </div>
+        </div>
+
+        <p>
+          De speler ziet alleen deze segmenten. De inhoudsopgave wijst naar een segment en
+          een offset daarbinnen. Zo kan “volgende kop” naar 2:14 springen, ook al begint
+          het segment zelf bij 2:00.
+        </p>
+
+        <h3>Waarom clips samenvoegen?</h3>
+        <p>
+          Als elke clip een apart media-item werd, zou de speler bij een boek met
+          duizenden clips ook duizenden items moeten voorbereiden. Door aangrenzende
+          clips uit hetzelfde bestand samen te voegen, blijft de playlist klein. De app
+          voegt alleen samen als de clips echt op elkaar aansluiten (met een kleine
+          tolerantie van 60 milliseconden).
+        </p>
+
+        <h3>Terug naar een positie</h3>
+        <p>
+          De app bewaart een positie als <code>BookPosition</code>: het bronbestand, de
+          offset in dat bestand en de globale tijd. Waarom alle drie? Omdat hetzelfde
+          audiobestand op meerdere plekken in een boek kan terugkomen. De globale tijd
+          helpt de juiste herhaling te vinden; de broninformatie is een fallback als de
+          boekindeling is veranderd.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/book/Models.kt</p>
+          <pre><code>fun segmentAtGlobal(positionMs: Long): Pair&lt;AudioSegment, Long&gt;? {
+  if (segments.isEmpty()) return null
+  val safe = positionMs.coerceAtLeast(0L)
+  val segment =
+    segments.firstOrNull { safe &lt; it.trackStartMs + it.durationMs } ?: segments.last()
+  return segment to (safe - segment.trackStartMs)
+    .coerceIn(0L, segment.durationMs)
+}</code></pre>
+        </div>
+
+        <p>
+          Dit is een <em>halve-open interval</em>: een positie precies op de grens hoort
+          bij het volgende segment. Daardoor verspringt de markering niet onverwacht bij
+          een hoofdstukovergang.
+        </p>
+
+        <h3>Wat doet de parser met rommelige boeken?</h3>
+        <div class="grid grid--2">
+          <article class="mini-card">
+            <h4>Ontbrekende eindtijd</h4>
+            <p>
+              De parser gebruikt de start van een latere clip in hetzelfde audiobestand.
+              Zo blijft een boek met onvolledige SMIL-bestanden toch bruikbaar.
+            </p>
+          </article>
+          <article class="mini-card">
+            <h4>Onleesbaar SMIL</h4>
+            <p>
+              Dat bestand wordt overgeslagen en er komt een waarschuwing bij het boek.
+              Andere SMIL-bestanden kunnen gewoon doorgaan.
+            </p>
+          </article>
+          <article class="mini-card">
+            <h4>Geen navigatiepunten</h4>
+            <p>
+              De app maakt dan zelf “Deel 1”, “Deel 2”, enzovoort op basis van de
+              audiobestanden. Zo heeft de speler altijd een inhoudsopgave.
+            </p>
+          </article>
+          <article class="mini-card">
+            <h4>Andere tekstcodering</h4>
+            <p>
+              <code>TextDecoding</code> herkent een BOM of charset en valt terug op
+              Windows-1252 als een oud bestand niet geldig UTF-8 is.
+            </p>
+          </article>
+        </div>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Waarom al die waarschuwingen?</p>
+          <p>
+            De parser wil niet meteen stoppen bij elk raar bestand. Een boek met één
+            onleesbaar SMIL-bestand is vaak nog steeds bruikbaar. De waarschuwingen
+            bewaren wat er misging, zonder de gebruiker met technische details te
+            overstelpen. In de UI worden ze niet standaard getoond.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="omslagen">
+        <header class="chapter__head">
+          <p class="chapter__no">08</p>
+          <div>
+            <p class="kicker">Een gezicht voor elk boek</p>
+            <h2>Omslagen</h2>
+            <p class="lede">
+              Een omslag kan in het boek staan, in de metadata worden genoemd of in een
+              audiobestand verstopt zitten. De app probeert ze in die volgorde.
+            </p>
+          </div>
+        </header>
+
+        <h3>Waar zoekt de app?</h3>
+        <ol class="route">
+          <li>Een omslag die in <code>book.opf</code> staat.</li>
+          <li>Een omslag die in <code>ncc.html</code> wordt genoemd of als eerste afbeelding staat.</li>
+          <li>Een afbeelding met een naam als <code>cover.jpg</code>, <code>omslag.png</code> of <code>voorblad.jpg</code>.</li>
+          <li>Als er precies één afbeelding is, die afbeelding.</li>
+          <li>Een hoes die in de ID3-tags van een MP3-bestand zit.</li>
+        </ol>
+
+        <p>
+          Alleen echte bitmapformaten tellen mee: JPG, PNG, GIF, WebP en BMP. Een SVG of
+          een willekeurig bestand met de naam “cover” wordt niet als omslag gebruikt.
+        </p>
+
+        <h3>Waarom een lokale kopie?</h3>
+        <p>
+          Een mapimport leeft achter een Android-toestemming. Die toestemming kan
+          verdwijnen of de map kan verplaatst worden. Daarom kopieert
+          <code>BookRepository</code> de omslag naar <code>files/covers/</code>. De
+          bibliotheek blijft dan een afbeelding houden, ook als het boek tijdelijk niet
+          leesbaar is.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/BookRepository.kt (idee)</p>
+          <pre><code>// De omslag krijgt een unieke naam.
+val target = File(
+  coversRoot,
+  "$bookId-${System.currentTimeMillis()}-${System.nanoTime()}.$extension"
+)
+target.outputStream().use { it.write(bytes) }
+libraryRepository.updateCover(bookId, target.absolutePath)</code></pre>
+        </div>
+
+        <p>
+          De unieke naam is bewust gekozen: als je een nieuwe omslag kiest met dezelfde
+          bestandsnaam, kan Compose anders nog de oude bitmap uit zijn cache tonen. Een
+          nieuwe naam dwingt een nieuwe afbeelding af.
+        </p>
+
+        <h3>Zelf een omslag kiezen</h3>
+        <p>
+          Via het afbeeldingsicoon opent een kleine browser met Google Afbeeldingen. De
+          zoekopdracht bestaat uit titel en auteur. Houd een afbeelding ingedrukt, bekijk
+          de preview en bevestig. Daarna downloadt <code>CoverImageDownloader</code>
+          alleen die afbeelding en slaat <code>BookRepository.setCover</code> haar op.
+        </p>
+        <ul class="checklist">
+          <li>Alleen HTTP(S)-links, protocol-relatieve links en <code>data:</code>-afbeeldingen.</li>
+          <li>Maximaal 12 MB en alleen bekende bitmapformaten.</li>
+          <li>Bij een fout blijft de oude omslag staan.</li>
+          <li>De gekozen afbeelding wordt lokaal bewaard, niet elke keer opnieuw gedownload.</li>
+        </ul>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Geen omslag?</p>
+          <p>
+            Dan toont de app het standaard boek-icoon. Je kunt later altijd nog een
+            omslag kiezen via de omslagbrowser. Daarvoor is wel internet nodig.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="afspelen">
+        <header class="chapter__head">
+          <p class="chapter__no">09</p>
+          <div>
+            <p class="kicker">Het ingewikkeldste deel</p>
+            <h2>Afspelen</h2>
+            <p class="lede">
+              Het speler-scherm is maar een bedieningspaneel. De echte speler is een
+              Android-service die ook zonder het scherm kan blijven draaien.
+            </p>
+          </div>
+        </header>
+
+        <div class="callout callout--warn">
+          <p class="callout__title">Neem hier de tijd voor</p>
+          <p>
+            Dit is het grootste en meest verweven deel van de app. Lees eerst de grote
+            lijn. Sla gerust de details over en kom later terug als je een specifieke
+            vraag hebt, bijvoorbeeld: “wat gebeurt er als ik mijn koptelefoon losmaak?”
+          </p>
+        </div>
+
+        <h3>Twee werelden</h3>
+        <div class="two-worlds">
+          <article class="world world--ui">
+            <p class="world__tag">Schermwereld</p>
+            <h3>PlayerViewModel</h3>
+            <ul>
+              <li>Hoort bij het spelerscherm.</li>
+              <li>Leest het boek uit de repository.</li>
+              <li>Maakt verbinding met de service.</li>
+              <li>Toont tijd, hoofdstuk, knoppen en fouten.</li>
+              <li>Verdwijnt als het scherm definitief weg is.</li>
+            </ul>
+          </article>
+          <article class="world world--service">
+            <p class="world__tag">Achtergrondwereld</p>
+            <h3>DaisyPlaybackService</h3>
+            <ul>
+              <li>Bezit de echte ExoPlayer.</li>
+              <li>Blijft draaien als de app op de achtergrond staat.</li>
+              <li>Beheert de media-melding en hoofdtelefoonknoppen.</li>
+              <li>Bewaart de positie en bookmarks.</li>
+              <li>Kan het laatst gespeelde boek hervatten.</li>
+            </ul>
+          </article>
+        </div>
+
+        <p>
+          De twee werelden praten via <strong>Media3</strong>. De service maakt een
+          <code>MediaSession</code>. Het scherm maakt een <code>MediaController</code>.
+          Die controller kan standaard play, pause en zoeken, en de app heeft een paar
+          eigen opdrachten toegevoegd, zoals <code>LOAD_BOOK</code> en
+          <code>SET_SLEEP_TIMER</code>. De service zet haar laadstatus in de
+          <em>session extras</em>; de ViewModel leest die extras en vertaalt ze naar de
+          toestand van het scherm.
+        </p>
+
+        <h3>De media-items</h3>
+        <p>
+          De service vertaalt elk <code>AudioSegment</code> naar een
+          <code>MediaItem</code>. Daarbij zegt hij: “gebruik dit audiobestand, maar alleen
+          het stuk tussen deze begin- en eindtijd”.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/playback/DaisyPlaybackService.kt (ingekort)</p>
+          <pre><code>MediaItem.Builder()
+  .setUri(Uri.parse(source.playableUri(segment.sourcePath)))
+  .setMediaId("$bookId:${segment.index}")
+  .setClippingConfiguration(
+    MediaItem.ClippingConfiguration.Builder()
+      .setStartPositionMs(segment.clipStartMs)
+      .setEndPositionMs(segment.clipEndMs)
+      .build()
+  )
+  .build()</code></pre>
+        </div>
+
+        <p>
+          De <code>mediaId</code> begint met het boek-ID. Daaraan kan de app zien of de
+          media in de speler bij dít boek horen. Dat is belangrijk wanneer een oude
+          opdracht of een oud boek nog even doorwerkt.
+        </p>
+
+        <h3>De laadstatus</h3>
+        <p>
+          De service publiceert vier standen: <code>IDLE</code>, <code>LOADING</code>,
+          <code>READY</code> en <code>ERROR</code>. Het scherm heeft daarnaast eigen fasen
+          voor de laadtekst: verbinden, boek inlezen, speler voorbereiden, klaar of fout.
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Status</th><th>Betekenis</th><th>Wat de gebruiker ziet</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>IDLE</code></td><td>Er is geen boek actief in de speler.</td><td>Bibliotheek of een leeg speler-scherm.</td></tr>
+              <tr><td><code>LOADING</code></td><td>De service is een boek aan het klaarzetten.</td><td>Laadscherm met de titel en een voortgangsindicator.</td></tr>
+              <tr><td><code>READY</code></td><td>De media staan echt in de speler.</td><td>Het speler-scherm met bediening.</td></tr>
+              <tr><td><code>ERROR</code></td><td>Het boek kon niet worden geopend.</td><td>Een foutmelding en “Opnieuw proberen”.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Waarom is READY pas laat?</p>
+          <p>
+            Een service kan “klaar” roepen voordat de media echt in de speler staan. Als
+            de UI dan al het spelerscherm toont, krijg je een scherm zonder audio. Daarom
+            controleert de app of de media-items van dit boek aanwezig zijn. Is dat niet
+            zo, dan probeert ze het één keer opnieuw en daarna wordt het een duidelijke
+            fout in plaats van een oneindige spinner. Die bewaking zit in
+            <code>PlayerLoadStateMachine</code>, een klein testbaar onderdeel van de
+            ViewModel.
+          </p>
+        </div>
+
+        <h3>Play, pause en zoeken</h3>
+        <p>
+          De ViewModel stuurt geen ruwe speleropdrachten naar ExoPlayer. Hij stuurt een
+          commando naar de service. De service beslist wat dat betekent. Bij play doet hij
+          bijvoorbeeld meer dan alleen <code>play()</code>:
+        </p>
+        <ul class="checklist">
+          <li>Is het boek klaar (ENDED)? Eerst terug naar het begin.</li>
+          <li>Is de speler in een fout- of idle-toestand? Eerst <code>prepare()</code>.</li>
+          <li>Is er een slaaptimer-fade bezig? Die wordt geannuleerd.</li>
+          <li>Is de audiofocus tijdelijk verloren? Eerst opnieuw focus aanvragen.</li>
+          <li>Daarna wordt één startbookmark gemaakt en gaat het afspelen verder.</li>
+        </ul>
+
+        <h3>Hoofdstukken en snelheid</h3>
+        <p>
+          Vorige en volgende kop gebruiken <code>headingTarget</code> uit
+          <code>DaisyBook</code>. Dat zoekt het dichtstbijzijnde navigatiepunt vooruit of
+          achteruit. De afspeelsnelheid loopt van 0,5× tot 2,0× in stappen van 0,1×. De
+          toonhoogte blijft gelijk; alleen het tempo verandert. De gekozen snelheid wordt
+          in SharedPreferences bewaard.
+        </p>
+
+        <h3>Audiofocus en koptelefoons</h3>
+        <p>
+          Android regelt welke app audio mag afspelen. Als een andere app de audio overneemt,
+          kan DaisySpeler tijdelijk of blijvend naar de achtergrond gaan. De service luistert
+          naar die gebeurtenissen en past de status aan.
+        </p>
+        <ul class="checklist">
+          <li>Bij een losgekoppelde koptelefoon of Bluetooth-speaker pauzeert de app.</li>
+          <li>Bij tijdelijk focusverlies blijft de luistersessie kloppen: er wordt een stopbookmark gemaakt en bij hervatten een nieuwe start.</li>
+          <li>Een expliciete tik op play vraagt opnieuw om audiofocus.</li>
+          <li>De media-melding en headsetknoppen gebruiken dezelfde service.</li>
+          <li>Een play-toets op een headset of auto kan het laatst gespeelde boek hervatten, ook als de app niet meer actief is.</li>
+        </ul>
+
+        <h3>De slaaptimer</h3>
+        <p>
+          De timer bewaart een eindtijd, niet alleen “nog zoveel minuten”. Daardoor klopt
+          hij ook als de app even op de achtergrond staat. De service controleert elke
+          seconde. Bij het verlopen fadet het volume in drie seconden naar nul, pauzeert
+          de audio en wordt een bookmark met reden <code>SLEEP_TIMER</code> opgeslagen.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/storage/SleepTimerManager.kt (ingekort)</p>
+          <pre><code>val value = SleepTimerState(
+  bookId = bookId,
+  deadlineEpochMs = now + durationMs,
+  durationMs = durationMs,
+  startedAtEpochMs = now,
+)
+_state.value = value
+persist(SleepTimerData(value))</code></pre>
+        </div>
+
+        <p>
+          De timer geldt per boek. Open je een ander boek, dan wordt een timer van het
+          oude boek geannuleerd. In debugbuilds bestaat een testoptie van 10 seconden.
+        </p>
+
+        <h3>Positie bewaren</h3>
+        <p>
+          Tijdens het afspelen wordt elke 30 seconden een positie bewaard. Bij pauzeren,
+          zoeken, stoppen en het einde van een boek gebeurt dat direct. De schrijfacties
+          gaan via één wachtrij, zodat een oude positie nooit een nieuwere positie
+          overschrijft. Bij het afsluiten krijgt die wachtrij maximaal twee seconden om
+          klaar te zijn.
+        </p>
+
+        <h3>Boekwissel</h3>
+        <p>
+          Ga je terug naar de bibliotheek, dan stuurt de navigatie een
+          <code>STOP_FOR_BOOK_SWITCH</code>-intentie. De service maakt een stopbookmark
+          met reden “boekwissel”, stopt de speler en ruimt de media op. Zo kan een volgend
+          boek veilig laden zonder dat de oude media in de weg zitten.
+        </p>
+
+        <h3>De lastigste wedstrijd: oude antwoorden</h3>
+        <p>
+          Stel: je tikt op boek A, daarna snel op boek B. De service kan nog bezig zijn met
+          A. Zonder maatregelen zou een laat antwoord van A het scherm van B kunnen
+          overschrijven. Daarom gebruikt de app <strong>request-id's</strong> en een
+          <strong>generation-teller</strong>. Een antwoord dat niet bij de nieuwste
+          aanvraag hoort, wordt genegeerd.
+        </p>
+        <p>
+          Dit lijkt misschien overdreven, maar het is precies het soort probleem dat je
+          anders alleen op een langzame telefoon of tijdens een grote import ziet. De
+          tests in <code>BookLoadingTest.kt</code> en de Android-tests controleren dit
+          gedrag.
+        </p>
+      </section>
+
+      <section class="chapter" id="bookmarks">
+        <header class="chapter__head">
+          <p class="chapter__no">10</p>
+          <div>
+            <p class="kicker">Nooit meer de weg kwijt</p>
+            <h2>Bookmarks en verder luisteren</h2>
+            <p class="lede">
+              DaisySpeler maakt automatisch een start- en stoppunt per luistersessie.
+              Daarnaast kun je zelf een bookmark met een notitie maken.
+            </p>
+          </div>
+        </header>
+
+        <h3>Twee soorten bookmarks</h3>
+        <div class="grid grid--2">
+          <article class="mini-card">
+            <h4>Automatische sessies</h4>
+            <p>
+              Elke keer dat het afspelen start, opent de app een sessie. Bij pauzeren,
+              slapen, het einde van het boek, een fout of een boekwissel wordt de sessie
+              gesloten. De stopreden wordt bewaard.
+            </p>
+          </article>
+          <article class="mini-card">
+            <h4>Eigen bookmarks</h4>
+            <p>
+              Met “Markeren” bewaar je de huidige plek, eventueel met een korte notitie.
+              Deze staan boven de automatische bookmarks en kun je apart verwijderen.
+            </p>
+          </article>
+        </div>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/data/storage/StorageModels.kt</p>
+          <pre><code>data class BookmarkSession(
+  val id: String,
+  val bookId: String,
+  val start: BookmarkPoint,
+  val stop: BookmarkPoint? = null,
+)
+
+data class ManualBookmark(
+  val id: String,
+  val bookId: String,
+  val point: BookmarkPoint,
+  val note: String? = null,
+)</code></pre>
+        </div>
+
+        <p>
+          Een <code>BookmarkPoint</code> bewaart dezelfde drie positiegegevens als
+          <code>BookPosition</code>, plus een label, tijdstip en optionele reden. Daardoor
+          kan de app later terugspringen, ook als de boekindeling licht is veranderd.
+        </p>
+
+        <h3>Waarom een sessie en geen losse bookmark?</h3>
+        <p>
+          Een luistersessie heeft een begin en een eind. Door ze als paar te bewaren, kan
+          de app later tonen hoe lang je hebt geluisterd en waar je bent gestopt. De
+          stopreden maakt het verschil tussen “zelf gepauzeerd”, “slaaptimer”, “einde
+          boek” en “fout” zichtbaar.
+        </p>
+
+        <h3>Opruimen</h3>
+        <ul class="checklist">
+          <li>Maximaal vijf automatische sessies per boek.</li>
+          <li>Maximaal 200 eigen bookmarks per boek.</li>
+          <li>Een sessie die langer dan twaalf uur openstaat, wordt als verouderd (<code>STALE</code>) gesloten.</li>
+          <li>Bij verwijderen van een boek verdwijnen alle bookmarks van dat boek.</li>
+        </ul>
+
+        <h3>Verder luisteren is iets anders</h3>
+        <p>
+          “Verder luisteren” is de laatste positie in <code>LibraryEntry.lastPosition</code>.
+          Die wordt tijdens het afspelen en bij zoeken/pauzeren bijgewerkt. Een bookmark is
+          een expliciet moment; de laatste positie is simpelweg waar de speler moet
+          hervatten. Ze worden apart opgeslagen en hebben een verschillend doel.
+        </p>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Waarom zowel bron- als globale positie?</p>
+          <p>
+            Een boek kan hetzelfde audiobestand meerdere keren gebruiken, bijvoorbeeld
+            bij een herhaling. De bronpositie alleen is dan dubbelzinnig. De globale
+            positie helpt de juiste herhaling te vinden. Andersom kan een gewijzigde
+            boekindeling de globale positie minder betrouwbaar maken; dan is de
+            bronpositie weer nuttig.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="downloads">
+        <header class="chapter__head">
+          <p class="chapter__no">11</p>
+          <div>
+            <p class="kicker">Boeken van het web</p>
+            <h2>Boekbrowser en downloads</h2>
+            <p class="lede">
+              De ingebouwde browser opent twee boekwebsites. Een download gaat via
+              Android's DownloadManager naar de gedeelde Download-map en wordt daarna
+              automatisch geïmporteerd.
+            </p>
+          </div>
+        </header>
+
+        <h3>Welke websites?</h3>
+        <p>
+          De app ondersteunt twee vaste websites: <strong>Passend Lezen</strong> en
+          <strong>ABC Global Books</strong>. Je logt in met je eigen account. De browser
+          is geen algemene browser: hij is bedoeld voor deze websites en hun downloads.
+        </p>
+
+        <h3>De downloadreis</h3>
+        <ol class="flow">
+          <li class="flow__step">
+            <span class="flow__num">1</span>
+            <strong>Downloadlink</strong>
+            <span>De WebView ziet een download en geeft de URL, cookies en user-agent door.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">2</span>
+            <strong>DownloadManager</strong>
+            <span>Android downloadt naar <code>Download/audioboeken</code> en gaat door als de app op de achtergrond staat.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">3</span>
+            <strong>Melding</strong>
+            <span>Bij voltooiing of bij terugkeer in de app controleert de monitor de download.</span>
+          </li>
+          <li class="flow__step">
+            <span class="flow__num">4</span>
+            <strong>Importeren</strong>
+            <span>Alleen een ZIP-bestand wordt automatisch uitgepakt en aan de bibliotheek toegevoegd.</span>
+          </li>
+        </ol>
+
+        <h3>Waarom DownloadManager?</h3>
+        <p>
+          <code>DownloadManager</code> wordt door Android beheerd. Een grote download kan
+          daardoor doorlopen als de app naar de achtergrond gaat of tijdelijk wordt
+          afgesloten. De app hoeft dan geen eigen achtergrondproces voor het downloaden
+          open te houden.
+        </p>
+
+        <h3>Map en toestemming</h3>
+        <p>
+          Standaard gaan downloads naar <code>Download/audioboeken</code>. De naam is in de
+          app aan te passen. Op Android 10 en nieuwer regelt de app de map via MediaStore,
+          zonder brede opslagtoestemming. Op Android 9 en ouder is
+          <code>WRITE_EXTERNAL_STORAGE</code> nodig.
+        </p>
+
+        <h3>Automatische import</h3>
+        <p>
+          De app bewaart welke download-ID's nog verwerkt moeten worden. Een voltooide
+          download wordt op meerdere momenten gecontroleerd:
+        </p>
+        <ul class="checklist">
+          <li>bij het starten van de app;</li>
+          <li>als Android een “download voltooid”-melding stuurt;</li>
+          <li>als je terugkeert in de app;</li>
+          <li>als je zelf op “Toevoegen” tikt.</li>
+        </ul>
+        <p>
+          Een download die geen ZIP is, blijft in de downloadmap staan. De app meldt dat
+          alleen ZIP-bestanden automatisch worden toegevoegd. Een mislukte import wordt
+          maximaal drie keer opnieuw geprobeerd.
+        </p>
+
+        <div class="callout callout--warn">
+          <p class="callout__title">ZIP controleren zonder hem eerst te openen</p>
+          <p>
+            De app leest de eerste twee bytes van het gedownloade bestand. Als dat
+            <code>P</code> en <code>K</code> zijn, is het waarschijnlijk een ZIP. Zo voorkomt
+            de app dat een willekeurig bestand als boek wordt uitgepakt.
+          </p>
+        </div>
+
+        <h3>Geen dubbele downloads</h3>
+        <p>
+          <code>DownloadEnqueueGuard</code> onthoudt welke URL en bestandsnaam al
+          onderweg zijn. Tik je twee keer op dezelfde download, dan meldt de app dat het
+          boek al gedownload wordt of nog aan de bibliotheek wordt toegevoegd.
+        </p>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Wat verlaat je toestel?</p>
+          <p>
+            De boekbrowser en de omslagbrowser gebruiken internet. De rest van de app
+            werkt lokaal. Er is geen account bij DaisySpeler zelf en er worden geen
+            luistergegevens naar een server gestuurd.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="schermen">
+        <header class="chapter__head">
+          <p class="chapter__no">12</p>
+          <div>
+            <p class="kicker">De voorkant</p>
+            <h2>De schermen</h2>
+            <p class="lede">
+              Alle schermen zijn geschreven met Jetpack Compose. Een scherm is een
+              functie die de huidige toestand omzet in knoppen, tekst en vlakken.
+            </p>
+          </div>
+        </header>
+
+        <h3>De vijf schermen</h3>
+        <div class="screen-grid">
+          <article class="screen-card">
+            <span class="screen-card__icon" aria-hidden="true">▤</span>
+            <h3>Bibliotheek</h3>
+            <p>Boekenplank, sorteren, importeren, omslagen, downloaden en verwijderen.</p>
+            <code>ui/library/LibraryScreen.kt</code>
+          </article>
+          <article class="screen-card">
+            <span class="screen-card__icon" aria-hidden="true">◉</span>
+            <h3>Speler</h3>
+            <p>Omslag, titel, hoofdstuk, tijdlijn, play/pause, snelheid, timer en bookmarks.</p>
+            <code>ui/player/PlayerScreen.kt</code>
+          </article>
+          <article class="screen-card">
+            <span class="screen-card__icon" aria-hidden="true">⌕</span>
+            <h3>Omslagbrowser</h3>
+            <p>Google Afbeeldingen met een zoekveld en een lange-vingerige preview.</p>
+            <code>ui/cover/CoverBrowserScreen.kt</code>
+          </article>
+          <article class="screen-card">
+            <span class="screen-card__icon" aria-hidden="true">⌂</span>
+            <h3>Boekbrowser</h3>
+            <p>WebView voor de twee boekwebsites, met downloadmap en voortgang.</p>
+            <code>ui/browser/BookBrowserScreen.kt</code>
+          </article>
+          <article class="screen-card">
+            <span class="screen-card__icon" aria-hidden="true">ⓘ</span>
+            <h3>Over</h3>
+            <p>Auteur, versie, help en de GPLv3-licentie.</p>
+            <code>ui/about/AboutScreen.kt</code>
+          </article>
+        </div>
+
+        <h3>Hoe een scherm werkt</h3>
+        <p>
+          Een scherm leest een <code>StateFlow</code> uit zijn ViewModel met
+          <code>collectAsStateWithLifecycle</code>. Als de waarde verandert, maakt Compose
+          het scherm opnieuw. De gebruiker tikt op een knop, de knop roept een functie op
+          het ViewModel aan, en het ViewModel verandert de toestand of stuurt een opdracht.
+        </p>
+
+        <div class="code-card">
+          <p class="code-card__file">app/src/main/java/nl/simon/daisyspeler/ui/library/LibraryScreen.kt (ingekort)</p>
+          <pre><code>val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+Scaffold(
+  topBar = { /* titel en knoppen */ },
+  floatingActionButton = {
+    ExtendedFloatingActionButton(
+      onClick = { showAddSheet = true },
+      text = { Text("Boek toevoegen") },
+    )
+  },
+) { padding -&gt; /* de boekenlijst */ }</code></pre>
+        </div>
+
+        <h3>Het speler-scherm</h3>
+        <p>
+          De speler heeft een compacte kop met omslag, titel en hoofdstuk. Daaronder
+          staan de tijdlijn en de bediening. Via kleine knoppen open je bottom sheets:
+        </p>
+        <ul class="checklist">
+          <li><strong>Inhoud:</strong> koppen, pagina's of alles, met filters.</li>
+          <li><strong>Bookmarks:</strong> automatische sessies en eigen notities.</li>
+          <li><strong>Snelheid:</strong> van 0,5× tot 2,0×.</li>
+          <li><strong>Slaaptimer:</strong> 15 minuten tot 2 uur.</li>
+        </ul>
+
+        <h3>Het laadscherm</h3>
+        <p>
+          Bij het openen uit de bibliotheek verschijnt eerst een laadscherm met de
+          boektitel. De tekst volgt de laadfase: “Verbinden met de speler…”, “Boek
+          inlezen…” of “Speler voorbereiden…”. Zo weet je dat de app bezig is en niet
+          vastgelopen.
+        </p>
+
+        <h3>Toegankelijkheid</h3>
+        <p>
+          De app gebruikt Nederlandse <code>contentDescription</code>-teksten voor
+          iconen, een grotere icoonstand (1,5×) via de vergrootglasknop en een
+          Material 3-thema dat meebeweegt met licht/donker. Veel knoppen hebben ook een
+          <code>stateDescription</code>, zodat een schermlezer kan melden of iets aan of
+          uit staat.
+        </p>
+
+        <h3>Thema</h3>
+        <p>
+          Op Android 12 en nieuwer gebruikt de app dynamische kleuren van het systeem.
+          Op oudere versies valt ze terug op een paars palette. De app heeft geen eigen
+          lettertype-bestand; ze gebruikt de standaardtekst van Material 3.
+        </p>
+      </section>
+
+      <section class="chapter" id="modellen">
+        <header class="chapter__head">
+          <p class="chapter__no">13</p>
+          <div>
+            <p class="kicker">De woordenschat</p>
+            <h2>Datamodellen</h2>
+            <p class="lede">
+              Bijna elk bestand in de app gebruikt een van deze dataclasses. Ken je ze,
+              dan lees je de rest een stuk sneller.
+            </p>
+          </div>
+        </header>
+
+        <div class="table-wrap">
+          <table class="model-table">
+            <thead>
+              <tr><th>Model</th><th>Waar het voor dient</th><th>Bewaard als</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>DaisyBook</code></td>
+                <td>Het volledige, geparseerde boek: titel, segmenten, inhoudsopgave en omslag.</td>
+                <td>Alleen in het geheugen (cache).</td>
+              </tr>
+              <tr>
+                <td><code>AudioSegment</code></td>
+                <td>Eén stuk audio uit één bestand, met een plek op de globale tijdlijn.</td>
+                <td>Onderdeel van <code>DaisyBook</code>; niet apart opgeslagen.</td>
+              </tr>
+              <tr>
+                <td><code>NavPoint</code></td>
+                <td>Een hoofdstuk, pagina, zijbalk of notitie in de inhoudsopgave.</td>
+                <td>Onderdeel van <code>DaisyBook</code>.</td>
+              </tr>
+              <tr>
+                <td><code>BookPosition</code></td>
+                <td>Een plek in het boek: bronbestand, bronoffset en globale tijd.</td>
+                <td>In <code>library.json</code> en bookmarks.</td>
+              </tr>
+              <tr>
+                <td><code>LibraryEntry</code></td>
+                <td>De administratie van één boek op de boekenplank.</td>
+                <td><code>library.json</code></td>
+              </tr>
+              <tr>
+                <td><code>BookmarkSession</code></td>
+                <td>Een automatische start/stop-sessie.</td>
+                <td><code>bookmarks.json</code></td>
+              </tr>
+              <tr>
+                <td><code>ManualBookmark</code></td>
+                <td>Een door de gebruiker gemaakte bookmark, met optionele notitie.</td>
+                <td><code>bookmarks.json</code></td>
+              </tr>
+              <tr>
+                <td><code>BookmarkPoint</code></td>
+                <td>De positie en het tijdstip van een bookmark.</td>
+                <td>Onderdeel van bookmarks.</td>
+              </tr>
+              <tr>
+                <td><code>SleepTimerState</code></td>
+                <td>Voor welk boek de timer loopt en wanneer hij afloopt.</td>
+                <td><code>sleep_timer.json</code></td>
+              </tr>
+              <tr>
+                <td><code>PlaybackUiState</code></td>
+                <td>Alles wat het speler-scherm op dit moment moet tonen.</td>
+                <td>Alleen in het geheugen.</td>
+              </tr>
+              <tr>
+                <td><code>PlayerLoadSnapshot</code></td>
+                <td>De fase van één laadpoging, met request-id en eventuele fout.</td>
+                <td>Alleen in het geheugen.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Waarom JSON en geen database?</h3>
+        <p>
+          De app bewaart een beperkte hoeveelheid gegevens: een bibliotheek, bookmarks,
+          een timer en een paar voorkeuren. JSON-bestanden zijn dan eenvoudig te lezen,
+          te testen en te back-uppen. De keerzijde is dat elke wijziging het hele bestand
+          opnieuw schrijft. Daarom worden posities niet bij elke seconde weggeschreven,
+          maar met tussenpozen en op belangrijke momenten.
+        </p>
+
+        <div class="callout callout--note">
+          <p class="callout__title">Atomic schrijven</p>
+          <p>
+            <code>JsonFileStore</code> schrijft eerst naar <code>bestand.tmp</code> en
+            hernoemt dat daarna naar het echte bestand. Wordt de app halverwege
+            afgesloten, dan is de kans kleiner dat het originele bestand half beschreven
+            achterblijft.
+          </p>
+        </div>
+
+        <h3>Twee soorten tijd</h3>
+        <p>
+          In de code kom je twee soorten tijd tegen:
+        </p>
+        <ul class="checklist">
+          <li><strong>Positietijd</strong> in milliseconden, bijvoorbeeld <code>globalMs</code> of <code>trackStartMs</code>.</li>
+          <li><strong>Kloktijd</strong> in epoch-milliseconden, bijvoorbeeld <code>createdAtEpochMs</code> of <code>deadlineEpochMs</code>.</li>
+        </ul>
+        <p>
+          Positietijd zegt “hoe ver in het boek”; kloktijd zegt “wanneer op de kalender”.
+          Ze door elkaar halen is een klassieke programmeerfout.
+        </p>
+      </section>
+
+      <section class="chapter" id="bestanden">
+        <header class="chapter__head">
+          <p class="chapter__no">14</p>
+          <div>
+            <p class="kicker">Naslag</p>
+            <h2>Bestandsgids</h2>
+            <p class="lede">
+              Dit zijn de bestanden waar je het vaakst zult kijken. De moeilijkheidsgraad
+              is een ruwe indicatie, geen wedstrijd.
+            </p>
+          </div>
+        </header>
+
+        <div class="table-wrap">
+          <table class="file-table">
+            <thead>
+              <tr><th>Bestand</th><th>Wat het doet</th><th>Niveau</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>DaisyApplication.kt</code></td><td>Start de app en maakt de container.</td><td>Makkelijk</td></tr>
+              <tr><td><code>AppContainer.kt</code></td><td>Maakt repositories, import, download en timer.</td><td>Makkelijk</td></tr>
+              <tr><td><code>MainActivity.kt</code></td><td>Start Compose en vraagt meldingstoestemming.</td><td>Makkelijk</td></tr>
+              <tr><td><code>Navigation.kt</code></td><td>Koppelt routes aan schermen.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/book/Models.kt</code></td><td>Boek, segment, navigatiepunt en positie.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/BookRepository.kt</code></td><td>Laden, cachen, importeren en omslagen beheren.</td><td>Gevorderd</td></tr>
+              <tr><td><code>data/BookImporter.kt</code></td><td>Import + bibliotheekentry in één stap.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/parser/DaisyBookLoader.kt</code></td><td>Het complete DAISY-boek opbouwen.</td><td>Gevorderd</td></tr>
+              <tr><td><code>data/parser/NccParser.kt</code></td><td>Inhoudsopgave en metadata uit <code>ncc.html</code>.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/parser/OpfParser.kt</code></td><td>Metadata en SMIL-volgorde uit <code>book.opf</code>.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/parser/SmilParser.kt</code></td><td>Audio- en tekstkoppelingen uit SMIL.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/parser/PathUtils.kt</code></td><td>Paden normaliseren en URL's oplossen.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/parser/TimeParser.kt</code></td><td><code>npt=</code>-tijden omzetten naar milliseconden.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/parser/TextDecoding.kt</code></td><td>BOM, UTF-8 en Windows-1252 herkennen.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/parser/ImageFiles.kt</code></td><td>Bitmapformaten en omslagnamen herkennen.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/parser/EmbeddedCover.kt</code></td><td>Omslag uit ID3-tags van audio halen.</td><td>Gevorderd</td></tr>
+              <tr><td><code>data/importer/ZipBookExtractor.kt</code></td><td>Veilig ZIP-bestanden uitpakken.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/source/BookSource.kt</code></td><td>De gedeelde interface voor boekmappen.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/source/SafBookSource.kt</code></td><td>Een map via Android SAF lezen.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/source/FileBookSource.kt</code></td><td>Een uitgepakte map in app-opslag lezen.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/storage/JsonFileStore.kt</code></td><td>JSON atomisch lezen en schrijven.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/storage/LibraryRepository.kt</code></td><td>De boekenlijst beheren.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/storage/BookmarkRepository.kt</code></td><td>Sessies en handmatige bookmarks beheren.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/storage/SleepTimerManager.kt</code></td><td>De slaaptimer starten, stoppen en bewaren.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/storage/UiPreferences.kt</code></td><td>Grote iconen en downloadmap bewaren.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/download/AudiobookDownloads.kt</code></td><td>DownloadManager, mappen en import volgen.</td><td>Gevorderd</td></tr>
+              <tr><td><code>data/download/DownloadImportMonitor.kt</code></td><td>Importchecks in de achtergrond starten.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>data/website/AudiobookSite.kt</code></td><td>De twee ondersteunde boekwebsites.</td><td>Makkelijk</td></tr>
+              <tr><td><code>data/cover/CoverImageDownloader.kt</code></td><td>Een gekozen omslagafbeelding downloaden.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>playback/DaisyPlaybackService.kt</code></td><td>ExoPlayer, MediaSession, bookmarks en timer.</td><td>Gevorderd</td></tr>
+              <tr><td><code>playback/PlaybackCommands.kt</code></td><td>De namen van extra service-opdrachten.</td><td>Makkelijk</td></tr>
+              <tr><td><code>playback/PlaybackStorage.kt</code></td><td>Opslagopdrachten in de juiste volgorde uitvoeren.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>playback/PlaybackSpeedOptions.kt</code></td><td>Toegestane afspeelsnelheden controleren.</td><td>Makkelijk</td></tr>
+              <tr><td><code>ui/library/LibraryViewModel.kt</code></td><td>Importeren, verwijderen, sorteren en omslagen.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>ui/library/LibraryScreen.kt</code></td><td>De boekenplank en alle bibliotheekknoppen.</td><td>Gemiddeld</td></tr>
+              <tr><td><code>ui/player/PlayerViewModel.kt</code></td><td>Verbinden met de service en de UI-status bijhouden.</td><td>Gevorderd</td></tr>
+              <tr><td><code>ui/player/PlayerScreen.kt</code></td><td>Het speler-scherm en de bottom sheets.</td><td>Gevorderd</td></tr>
+              <tr><td><code>ui/player/PlayerLoadState.kt</code></td><td>De laadfasen en timeouts als testbare state machine.</td><td>Gevorderd</td></tr>
+              <tr><td><code>ui/components/BookCover.kt</code></td><td>Een omslag of het standaard-icoon tonen.</td><td>Makkelijk</td></tr>
+              <tr><td><code>ui/theme/Theme.kt</code></td><td>Licht/donker en dynamische kleuren.</td><td>Makkelijk</td></tr>
+              <tr><td><code>ui/theme/IconScale.kt</code></td><td>De schaal voor grote iconen.</td><td>Makkelijk</td></tr>
+              <tr><td><code>util/Format.kt</code></td><td>Tijd, timer en datum leesbaar maken.</td><td>Makkelijk</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Waar staan de gebruikersgegevens?</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Plek</th><th>Inhoud</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>files/library.json</code></td><td>Boekenlijst, laatste positie en het moment waarop elk boek is toegevoegd.</td></tr>
+              <tr><td><code>files/bookmarks.json</code></td><td>Automatische sessies en handmatige bookmarks.</td></tr>
+              <tr><td><code>files/sleep_timer.json</code></td><td>De actieve slaaptimer, als die er is.</td></tr>
+              <tr><td><code>files/books/&lt;id&gt;/</code></td><td>Uitgepakte ZIP-boeken.</td></tr>
+              <tr><td><code>files/covers/</code></td><td>Lokale omslagafbeeldingen.</td></tr>
+              <tr><td>SharedPreferences</td><td>Interface-instellingen, laatste boek, snelheid, downloadmap en wachtende downloads.</td></tr>
+              <tr><td><code>Download/audioboeken/</code></td><td>Gedownloade ZIP-bestanden, gedeeld met de gebruiker.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="chapter" id="tests">
+        <header class="chapter__head">
+          <p class="chapter__no">15</p>
+          <div>
+            <p class="kicker">Vertrouwen in de code</p>
+            <h2>Tests</h2>
+            <p class="lede">
+              De tests zijn een tweede handleiding: ze laten zien welke situaties de
+              ontwikkelaars belangrijk vinden.
+            </p>
+          </div>
+        </header>
+
+        <h3>Lokaal draaien</h3>
+        <div class="code-card">
+          <p class="code-card__file">In de hoofdmap van het project</p>
+          <pre><code>./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug</code></pre>
+        </div>
+        <p>
+          De debug-APK komt daarna in
+          <code>app/build/outputs/apk/debug/app-debug.apk</code>.
+        </p>
+
+        <h3>Wat testen ze?</h3>
+        <div class="grid grid--2">
+          <article class="mini-card">
+            <h4>Parser</h4>
+            <p>NCC, OPF, SMIL, paden, tekstcodering, tijdnotatie en ontbrekende eindtijden.</p>
+          </article>
+          <article class="mini-card">
+            <h4>Opslag</h4>
+            <p>Bibliotheek, bookmarks, slaaptimer, JSON-behoud en schrijffouten.</p>
+          </article>
+          <article class="mini-card">
+            <h4>Import en download</h4>
+            <p>ZIP-beveiliging, downloadstatussen, mappen en dubbele downloads.</p>
+          </article>
+          <article class="mini-card">
+            <h4>Speler</h4>
+            <p>Laadstatus, timeouts, snelheid, bookmarks en positieherstel.</p>
+          </article>
+        </div>
+
+        <h3>Android-tests</h3>
+        <p>
+          Een deel van de tests heeft een emulator of toestel nodig. Ze gebruiken een
+          lokaal gegenereerd WAV-boek en een apart <code>applicationId</code>, zodat je
+          eigen boeken en accounts niet worden overschreven.
+        </p>
+        <div class="code-card">
+          <p class="code-card__file">Android-tests met een aparte testinstallatie</p>
+          <pre><code>./gradlew :app:connectedDebugAndroidTest \
+  -I gradle/isolated-tests.init.gradle --no-configuration-cache</code></pre>
+        </div>
+        <p>
+          Daarna bouw je met <code>:app:assembleDebug</code> weer een normale APK. De
+          volledige afspraken staan in <code>docs/regression-tests.md</code>.
+        </p>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Tests als leesroute</p>
+          <p>
+            Wil je weten hoe een laadfout wordt afgehandeld? Lees
+            <code>BookLoadingTest.kt</code>. Wil je begrijpen hoe een bookmark wordt
+            geopend en gesloten? Lees <code>BookmarkRepositoryTest.kt</code>. Tests zijn
+            vaak korter en gerichter dan de productcode.
+          </p>
+        </div>
+
+        <h3>Belangrijke testbestanden</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Test</th><th>Waarover</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>DaisyBookLoaderTest.kt</code></td><td>Volledige boekload, clips, segmenten en navigatie.</td></tr>
+              <tr><td><code>NccParserTest.kt</code></td><td>NCC-metadata, koppen, pagina's en omslagen.</td></tr>
+              <tr><td><code>SmilParserTest.kt</code></td><td>SMIL-clips en tijden.</td></tr>
+              <tr><td><code>ZipBookExtractorTest.kt</code></td><td>Veilig uitpakken en geweigerde paden.</td></tr>
+              <tr><td><code>LibraryRepositoryTest.kt</code></td><td>Toevoegen, bijwerken en verwijderen.</td></tr>
+              <tr><td><code>BookmarkRepositoryTest.kt</code></td><td>Sessies, handmatige bookmarks en opschonen.</td></tr>
+              <tr><td><code>SleepTimerManagerTest.kt</code></td><td>Timer starten, verlopen en bewaren.</td></tr>
+              <tr><td><code>PlaybackStorageTest.kt</code></td><td>Volgorde van opslagopdrachten.</td></tr>
+              <tr><td><code>BookLoadingTest.kt</code></td><td>Laadfasen, timeouts en READY zonder media.</td></tr>
+              <tr><td><code>PlaybackRegressionTest.kt</code></td><td>Echte afspeelsituaties op een toestel of emulator.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="chapter" id="woordenboek">
+        <header class="chapter__head">
+          <p class="chapter__no">16</p>
+          <div>
+            <p class="kicker">Naslag</p>
+            <h2>Woordenboek</h2>
+            <p class="lede">
+              Kort genoeg om even te checken, precies genoeg om verder te kunnen.
+            </p>
+          </div>
+        </header>
+
+        <dl class="glossary">
+          <div>
+            <dt>Activity</dt>
+            <dd>Een Android-onderdeel met een scherm. Hier is dat <code>MainActivity</code>.</dd>
+          </div>
+          <div>
+            <dt>Application</dt>
+            <dd>Het object dat Android één keer per app-proces maakt. Hier ontstaat de container.</dd>
+          </div>
+          <div>
+            <dt>Compose</dt>
+            <dd>De manier waarop deze app schermen bouwt: met Kotlin-functies in plaats van XML-layouts.</dd>
+          </div>
+          <div>
+            <dt>ViewModel</dt>
+            <dd>Een object dat de toestand van een scherm vasthoudt en acties uitvoert. Overleeft een schermrotatie.</dd>
+          </div>
+          <div>
+            <dt>StateFlow</dt>
+            <dd>Een houder met een actuele waarde waar schermen automatisch naar kunnen luisteren.</dd>
+          </div>
+          <div>
+            <dt>Coroutine</dt>
+            <dd>Een lichtgewicht taak die kan wachten zonder het hele programma te blokkeren. <code>suspend</code> betekent: “deze functie mag wachten”.</dd>
+          </div>
+          <div>
+            <dt>Repository</dt>
+            <dd>De plek die gegevens ophaalt en bewaart. De UI hoeft niet te weten hoe dat gebeurt.</dd>
+          </div>
+          <div>
+            <dt>Service</dt>
+            <dd>Een Android-onderdeel dat zonder scherm kan draaien. De playback-service bezit de speler.</dd>
+          </div>
+          <div>
+            <dt>Media3 / ExoPlayer</dt>
+            <dd>De Android-bibliotheek die audio afspeelt en mediasessies beheert.</dd>
+          </div>
+          <div>
+            <dt>MediaSession</dt>
+            <dd>De brug tussen de speler en de buitenwereld: melding, vergrendelscherm, headset en controller.</dd>
+          </div>
+          <div>
+            <dt>MediaController</dt>
+            <dd>De afstandsbediening waarmee een scherm opdrachten naar de media-sessie stuurt.</dd>
+          </div>
+          <div>
+            <dt>DAISY 2.02</dt>
+            <dd>Het luisterboekformaat dat deze app ondersteunt.</dd>
+          </div>
+          <div>
+            <dt>NCC</dt>
+            <dd><code>ncc.html</code>: de inhoudsopgave en metadata van een DAISY-boek.</dd>
+          </div>
+          <div>
+            <dt>OPF</dt>
+            <dd><code>book.opf</code>: een optionele beschrijving van de bestanden en hun volgorde.</dd>
+          </div>
+          <div>
+            <dt>SMIL</dt>
+            <dd>Een bestand dat tekstfragmenten aan audioclips koppelt.</dd>
+          </div>
+          <div>
+            <dt>Clip</dt>
+            <dd>Een stuk audio met een begin- en eindtijd binnen één audiobestand.</dd>
+          </div>
+          <div>
+            <dt>Segment</dt>
+            <dd>Een samengevoegd stuk audio op de doorlopende tijdlijn van het boek.</dd>
+          </div>
+          <div>
+            <dt>SAF</dt>
+            <dd>Storage Access Framework: de Android-manier om toegang te vragen tot precies de map die de gebruiker kiest.</dd>
+          </div>
+          <div>
+            <dt>URI</dt>
+            <dd>Een verwijzing naar een bestand of map, bijvoorbeeld <code>content://...</code>.</dd>
+          </div>
+          <div>
+            <dt>JSON</dt>
+            <dd>Een tekstformaat om gegevens te bewaren. De bibliotheek en bookmarks staan erin.</dd>
+          </div>
+          <div>
+            <dt>SharedPreferences</dt>
+            <dd>Kleine Android-opslag voor instellingen, zoals de gekozen sorteervolgorde.</dd>
+          </div>
+          <div>
+            <dt>Gradle</dt>
+            <dd>Het bouwsysteem dat de app compileert en tests start.</dd>
+          </div>
+          <div>
+            <dt>APK</dt>
+            <dd>Het installeerbare bestand van een Android-app.</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="chapter" id="leesroute">
+        <header class="chapter__head">
+          <p class="chapter__no">17</p>
+          <div>
+            <p class="kicker">Aan de slag</p>
+            <h2>Een leesroute voor beginners</h2>
+            <p class="lede">
+              Je hoeft niet alle 59 bestanden te lezen. Deze route geeft je steeds één
+              vraag om te beantwoorden.
+            </p>
+          </div>
+        </header>
+
+        <ol class="route route--big">
+          <li>
+            <strong>Dag 1 — De voordeur.</strong>
+            Lees <code>AndroidManifest.xml</code>, <code>DaisyApplication.kt</code>,
+            <code>AppContainer.kt</code> en <code>MainActivity.kt</code>. Vraag: welke
+            objecten bestaan er voordat het eerste scherm verschijnt?
+          </li>
+          <li>
+            <strong>Dag 2 — De boekenplank.</strong>
+            Lees <code>LibraryScreen.kt</code>, <code>LibraryViewModel.kt</code>,
+            <code>LibraryRepository.kt</code> en <code>StorageModels.kt</code>. Vraag:
+            hoe komt een boek in de lijst en hoe wordt de lijst bewaard?
+          </li>
+          <li>
+            <strong>Dag 3 — Het boek binnenhalen.</strong>
+            Lees <code>BookImporter.kt</code>, <code>BookRepository.importZip</code> en
+            <code>ZipBookExtractor.kt</code>. Vraag: wat gebeurt er als een ZIP onveilig
+            of onvolledig is?
+          </li>
+          <li>
+            <strong>Dag 4 — Het boek begrijpen.</strong>
+            Lees <code>Models.kt</code>, daarna <code>DaisyBookLoader.kt</code>. Vraag:
+            hoe wordt één losse clip een segment op de globale tijdlijn?
+          </li>
+          <li>
+            <strong>Dag 5 — De speler.</strong>
+            Lees <code>PlaybackCommands.kt</code>, <code>PlayerLoadState.kt</code>,
+            <code>PlayerViewModel.kt</code> en daarna de grote lijnen van
+            <code>DaisyPlaybackService.kt</code>. Vraag: waarom bestaat de service los
+            van het scherm?
+          </li>
+          <li>
+            <strong>Dag 6 — Onthouden en doorgaan.</strong>
+            Lees <code>BookmarkRepository.kt</code>, <code>SleepTimerManager.kt</code> en
+            de bookmarkfuncties in de service. Vraag: wat is het verschil tussen een
+            bookmark en “verder luisteren”?
+          </li>
+          <li>
+            <strong>Dag 7 — Vertrouwen.</strong>
+            Kies drie tests uit <code>app/src/test</code> en lees ze. Vraag: welke
+            situatie zou zonder deze test stukgaan?
+          </li>
+        </ol>
+
+        <h3>Vijf kleine oefeningen</h3>
+        <div class="exercise-grid">
+          <article class="exercise">
+            <span class="exercise__num">1</span>
+            <h3>Zoek de titel</h3>
+            <p>Waar wordt de titel van een boek uit <code>ncc.html</code> gelezen en waar komt die op het scherm?</p>
+          </article>
+          <article class="exercise">
+            <span class="exercise__num">2</span>
+            <h3>Volg een bookmark</h3>
+            <p>Begin bij “Markeren” in <code>PlayerScreen.kt</code> en volg de route tot in <code>BookmarkRepository.kt</code>.</p>
+          </article>
+          <article class="exercise">
+            <span class="exercise__num">3</span>
+            <h3>Lees een foutmelding</h3>
+            <p>Zoek de tekst “Het boek kon niet op tijd worden geopend” en lees welke time-out daarbij hoort.</p>
+          </article>
+          <article class="exercise">
+            <span class="exercise__num">4</span>
+            <h3>Maak een tijdlijn</h3>
+            <p>Bedenk drie clips met verschillende bronbestanden en teken de globale tijdlijn. Waar begint segment 3?</p>
+          </article>
+          <article class="exercise">
+            <span class="exercise__num">5</span>
+            <h3>Lees een test</h3>
+            <p>Open <code>BookLoadingTest.kt</code>. Welke drie situaties worden daar getest?</p>
+          </article>
+        </div>
+
+        <h3>Debuggen zonder verdwalen</h3>
+        <ul class="checklist">
+          <li>Gebruik Logcat en filter op <code>DaisyPlayback</code>, <code>DaisyPlayer</code> of <code>DaisyLibrary</code>.</li>
+          <li>Zoek in de code op een unieke fouttekst uit de UI of uit een logregel.</li>
+          <li>Lees bij een crash eerst de bovenste regels van de stacktrace, niet de hele lijst.</li>
+          <li>Test met een klein boek voordat je een groot boek probeert.</li>
+          <li>Verander één ding tegelijk en draai daarna de tests.</li>
+        </ul>
+
+        <div class="callout callout--tip">
+          <p class="callout__title">Je hoeft niet alles te begrijpen</p>
+          <p>
+            Goede code leest als een reeks kleine beslissingen. Als een bestand te groot
+            voelt, zoek dan één functie die je wél begrijpt en volg van daaruit de
+            aanroepen. De rest komt later.
+          </p>
+        </div>
+
+        <h3>Verder lezen</h3>
+        <ul class="link-list">
+          <li><a href="../../README.md">README.md</a> — de gebruikershandleiding en het overzicht van functies.</li>
+          <li><a href="../regression-tests.md">docs/regression-tests.md</a> — de testafspraken en handmatige controles.</li>
+          <li><a href="../../app/src/main/java/nl/simon/daisyspeler/">De broncode</a> — begin bij <code>MainActivity.kt</code> en <code>Models.kt</code>.</li>
+          <li><a href="https://developer.android.com/jetpack/compose">Jetpack Compose</a> — officiële Android-documentatie.</li>
+          <li><a href="https://developer.android.com/media/media3">Media3</a> — officiële documentatie voor de mediaspeler.</li>
+        </ul>
+      </section>
+
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="footer__inner">
+      <p>
+        <strong>DaisySpeler — codeboek voor beginners.</strong>
+        Gebaseerd op de mainbranch, commit <code>8a1fe33</code>, op 28 oktober 2026.
+        App-versie 6.0.
+      </p>
+      <p>
+        DaisySpeler is vrije software onder de GPLv3-licentie.
+        Copyright (C) 2026 Simon de Waal van Breukelen.
+      </p>
+      <p class="small">
+        Dit codeboek is met de hand geschreven op basis van de broncode. Klopt er iets
+        niet? De code in de repository is altijd de laatste waarheid.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
