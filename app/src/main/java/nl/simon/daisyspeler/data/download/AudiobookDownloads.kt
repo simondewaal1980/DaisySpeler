@@ -15,6 +15,8 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,6 +56,11 @@ class AudiobookDownloads(
 ) {
   private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   private val importMutex = Mutex()
+  private val enqueueGuard = DownloadEnqueueGuard { blockingDownloads() }
+  private val _importingFileName = MutableStateFlow<String?>(null)
+  val importingFileName = _importingFileName.asStateFlow()
+
+  internal fun isPendingDownload(id: Long): Boolean = id >= 0 && id.toString() in pendingDownloads()
 
   /** Naam van de downloadmap, bijvoorbeeld 'audioboeken'. */
   val folderName: String
@@ -80,21 +87,26 @@ class AudiobookDownloads(
       ) == PackageManager.PERMISSION_GRANTED
   }
 
-  fun enqueue(request: BrowserDownload): Long? {
+  fun enqueue(request: BrowserDownload): DownloadEnqueueResult {
     if (!request.url.startsWith("http://", ignoreCase = true) &&
       !request.url.startsWith("https://", ignoreCase = true)
     ) {
-      return null
+      return DownloadEnqueueResult.Failed
     }
-    ensureFolder()
-    if (!canDownloadToFolder()) return null
+    if (!canDownloadToFolder()) return DownloadEnqueueResult.Failed
 
     val guessed = URLUtil.guessFileName(request.url, request.contentDisposition, request.mimeType)
     var fileName = DownloadFileNames.sanitize(guessed)
     if (!fileName.contains('.') && request.mimeType?.contains("zip", ignoreCase = true) == true) {
       fileName += ".zip"
     }
-    fileName = uniqueFileName(fileName)
+    val identity = DownloadIdentity(request.url, fileName)
+    return enqueueGuard.enqueue(identity) { startDownload(request, identity) }
+  }
+
+  private fun startDownload(request: BrowserDownload, identity: DownloadIdentity): Long? {
+    ensureFolder()
+    val fileName = uniqueFileName(identity.fileName)
 
     val downloadRequest =
       DownloadManager.Request(Uri.parse(request.url)).apply {
@@ -122,11 +134,25 @@ class AudiobookDownloads(
     val manager = context.getSystemService(DownloadManager::class.java)
     return runCatching {
         val id = manager.enqueue(downloadRequest)
-        addPendingDownload(id)
+        addPendingDownload(id, identity)
         CookieManager.getInstance().flush()
         id
       }
       .getOrNull()
+  }
+
+  private fun blockingDownloads(): List<DownloadIdentity> {
+    val manager = context.getSystemService(DownloadManager::class.java)
+    return pendingDownloads().mapNotNull { rawId ->
+      val id = rawId.toLongOrNull() ?: return@mapNotNull null
+      val info = downloadInfo(manager, id) ?: return@mapNotNull null
+      // Successful transfers also block until imported. Failed or cancelled transfers can retry.
+      if (info.status == DownloadManager.STATUS_FAILED) return@mapNotNull null
+      DownloadIdentity(
+        url = preferences.getString(KEY_SOURCE_URL_PREFIX + rawId, null) ?: info.url,
+        fileName = preferences.getString(KEY_SOURCE_NAME_PREFIX + rawId, null) ?: info.fileName,
+      )
+    }
   }
 
   /**
@@ -151,7 +177,8 @@ class AudiobookDownloads(
             continue
           }
           if (info.status == DownloadManager.STATUS_RUNNING ||
-            info.status == DownloadManager.STATUS_PENDING
+            info.status == DownloadManager.STATUS_PENDING ||
+            info.status == DownloadManager.STATUS_PAUSED
           ) {
             continue
           }
@@ -178,6 +205,7 @@ class AudiobookDownloads(
             continue
           }
 
+          _importingFileName.value = info.fileName
           val loaded =
             try {
               importer.importZip(uri)
@@ -191,6 +219,8 @@ class AudiobookDownloads(
               }
               results += AudiobookImportResult.Failed(info.fileName, error.message)
               continue
+            } finally {
+              _importingFileName.value = null
             }
           removePendingDownload(rawId)
           results += AudiobookImportResult.Imported(loaded.book.title.ifBlank { info.fileName })
@@ -287,6 +317,7 @@ class AudiobookDownloads(
         manager.query(query).use { cursor ->
           if (!cursor.moveToFirst()) return@use null
           val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+          val url = cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_URI))
           val localUri =
             cursor
               .getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI))
@@ -303,7 +334,7 @@ class AudiobookDownloads(
             } else {
               null
             }
-          DownloadInfo(status, localUri, fileName, reason)
+          DownloadInfo(status, localUri, fileName, reason, url)
         }
       }
       .getOrNull()
@@ -330,19 +361,28 @@ class AudiobookDownloads(
   }
 
   @Synchronized
-  private fun addPendingDownload(id: Long) {
+  private fun addPendingDownload(id: Long, identity: DownloadIdentity) {
     val ids = pendingDownloads().toMutableSet()
     ids += id.toString()
-    preferences.edit().putStringSet(KEY_PENDING_DOWNLOADS, ids).apply()
+    preferences
+      .edit()
+      .putStringSet(KEY_PENDING_DOWNLOADS, ids)
+      .putString(KEY_SOURCE_URL_PREFIX + id, identity.url)
+      .putString(KEY_SOURCE_NAME_PREFIX + id, identity.fileName)
+      .apply()
     clearImportAttempts(id.toString())
   }
 
   @Synchronized
   private fun removePendingDownload(id: String) {
     val ids = pendingDownloads().toMutableSet()
-    if (ids.remove(id)) {
-      preferences.edit().putStringSet(KEY_PENDING_DOWNLOADS, ids).apply()
-    }
+    ids.remove(id)
+    preferences
+      .edit()
+      .putStringSet(KEY_PENDING_DOWNLOADS, ids)
+      .remove(KEY_SOURCE_URL_PREFIX + id)
+      .remove(KEY_SOURCE_NAME_PREFIX + id)
+      .apply()
     clearImportAttempts(id)
   }
 
@@ -388,12 +428,15 @@ class AudiobookDownloads(
     val localUri: String?,
     val fileName: String,
     val failureReason: String?,
+    val url: String,
   )
 
   companion object {
     private const val PREFS_NAME = "daisy_downloads"
     private const val KEY_PENDING_DOWNLOADS = "pending_downloads"
     private const val KEY_IMPORT_ATTEMPTS = "import_attempts"
+    private const val KEY_SOURCE_URL_PREFIX = "source_url_"
+    private const val KEY_SOURCE_NAME_PREFIX = "source_name_"
     private const val MAX_IMPORT_ATTEMPTS = 3
     private const val MAX_NAME_ATTEMPTS = 99
     private const val FOLDER_MARKER_NAME = "daisyspeler-map.txt"

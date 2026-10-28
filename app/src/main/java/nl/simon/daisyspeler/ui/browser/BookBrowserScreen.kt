@@ -1,11 +1,6 @@
 package nl.simon.daisyspeler.ui.browser
 
 import android.Manifest
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -88,6 +83,8 @@ fun BookBrowserScreen(
 ) {
   val viewModel: BookBrowserViewModel = viewModel { BookBrowserViewModel(container) }
   val state by viewModel.state.collectAsStateWithLifecycle()
+  val checkingDownloads by viewModel.checkingDownloads.collectAsStateWithLifecycle()
+  val importingFileName by viewModel.importingFileName.collectAsStateWithLifecycle()
   val folderName by viewModel.downloadFolder.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
@@ -196,21 +193,6 @@ fun BookBrowserScreen(
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
-  // Import while the browser stays open, so a finished book appears without extra taps.
-  DisposableEffect(context, viewModel) {
-    val receiver =
-      object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-          if (intent?.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
-            viewModel.checkCompletedDownloads()
-          }
-        }
-      }
-    val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-    ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-    onDispose { runCatching { context.unregisterReceiver(receiver) } }
-  }
-
   DisposableEffect(webView) {
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
@@ -277,7 +259,7 @@ fun BookBrowserScreen(
     bottomBar = {
       DownloadFolderBar(
         folderLabel = viewModel.folderLabel,
-        checking = state.checkingDownloads,
+        checking = checkingDownloads,
         onChangeFolder = { showFolderDialog = true },
         onImportDownloads = viewModel::checkCompletedDownloads,
       )
@@ -285,6 +267,16 @@ fun BookBrowserScreen(
     snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+      importingFileName?.let { fileName ->
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        Text(
+          text = "Download voltooid. $fileName wordt uitgepakt en toegevoegd aan de bibliotheek…",
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+          style = MaterialTheme.typography.bodyMedium,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
       if (loading) {
         LinearProgressIndicator(
           progress = { progress / 100f },
