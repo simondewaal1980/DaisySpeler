@@ -36,8 +36,10 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.concurrent.thread
 
 /** Runs with a separate applicationId during review; never uses real books or accounts. */
 @RunWith(AndroidJUnit4::class)
@@ -135,11 +137,19 @@ class PlaybackRegressionTest {
     await { !onMain { controller.isPlaying } }
     await { container.bookmarkRepository.sessionsForBook(BOOK_ID).firstOrNull()?.stop != null }
     assertEquals("PAUSE", container.bookmarkRepository.sessionsForBook(BOOK_ID).first().stop?.reason)
+    assertTrue(
+      "A permanent focus loss must be visible to the controller",
+      onMain { controller.sessionExtras.getBoolean(PlaybackCommands.KEY_AUDIO_FOCUS_LOST) },
+    )
+    assertFalse(onMain { controller.playWhenReady })
 
     application.getSystemService(AudioManager::class.java).abandonAudioFocusRequest(audioFocus!!)
     audioFocus = null
     startPlayback()
     await { container.bookmarkRepository.sessionsForBook(BOOK_ID).size == 2 }
+    assertFalse(
+      onMain { controller.sessionExtras.getBoolean(PlaybackCommands.KEY_AUDIO_FOCUS_LOST) },
+    )
   }
 
   @Test
@@ -173,25 +183,250 @@ class PlaybackRegressionTest {
   }
 
   @Test
-  fun loadingStatusDoesNotCancelTheLoadWatchdog() {
-    val model = onMain { PlayerViewModel(container, BOOK_ID) }
+  fun playWhileTheBookIsStillLoadingSticksAndStartsOneSession() {
+    command(PlaybackCommands.UNLOAD_BOOK, Bundle().apply { putString(PlaybackCommands.KEY_BOOK_ID, BOOK_ID) })
+    await { onMain { controller.mediaItemCount == 0 } }
+
+    command(PlaybackCommands.LOAD_BOOK, Bundle().apply { putString(PlaybackCommands.KEY_BOOK_ID, BOOK_ID) })
+    command(PlaybackCommands.START_PLAYBACK)
+
+    await(15_000L) { onMain { controller.isPlaying } }
+    await { container.bookmarkRepository.sessionsForBook(BOOK_ID).any { it.stop == null } }
+    assertEquals(1, container.bookmarkRepository.sessionsForBook(BOOK_ID).count { it.stop == null })
+  }
+
+  @Test
+  fun playFromIdleWithCommittedMediaPreparesAndStartsAgain() {
+    startPlayback()
+    onMain { controller.stop() }
+    await { onMain { controller.playbackState == Player.STATE_IDLE } }
+
+    command(PlaybackCommands.START_PLAYBACK)
+
+    await { onMain { controller.isPlaying } }
+    assertEquals(1, container.bookmarkRepository.sessionsForBook(BOOK_ID).size)
+  }
+
+  @Test
+  fun playFromEndedRewindsAndStartsAgain() {
+    startPlayback()
+    onMain { controller.seekTo(0, 59_900L) }
+    await { onMain { controller.playbackState == Player.STATE_ENDED } }
+
+    command(PlaybackCommands.START_PLAYBACK)
+
+    await { onMain { controller.isPlaying } }
+    assertTrue(onMain { controller.currentPosition < 5_000L })
+  }
+
+  @Test
+  fun activityStopAndResumeLeavesPlayPauseResponsive() {
+    startPlayback()
+    activity.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+    SystemClock.sleep(250L)
+    activity.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+
+    command(PlaybackCommands.PAUSE_PLAYBACK)
+    await { !onMain { controller.isPlaying } }
+    command(PlaybackCommands.START_PLAYBACK)
+    await { onMain { controller.isPlaying } }
+    assertTrue(onMain { controller.playWhenReady })
+  }
+
+  @Test
+  fun playerViewModelReconnectsAfterServiceRestartAndPlayPauseStillWork() {
+    onMain { controller.release() }
+    DaisyPlaybackService.requestShutdown(application)
+    SystemClock.sleep(1_000L)
+
+    val model =
+      onMain {
+        PlayerViewModel(container, BOOK_ID, loadTimeoutMs = 15_000L, readyGraceMs = 300L)
+      }
+    try {
+      await(20_000L) {
+        model.playback.value.loadState == PlaybackLoadState.READY &&
+          model.book.value != null
+      }
+      onMain { model.togglePlay() }
+      await(15_000L) { model.playback.value.isPlaying }
+
+      onMain { model.togglePlay() }
+      await(15_000L) { !model.playback.value.isPlaying }
+
+      // A second tap after the pause must not leave the button dead.
+      onMain { model.togglePlay() }
+      await(15_000L) { model.playback.value.isPlaying }
+    } finally {
+      onMain {
+        PlayerViewModel::class.java.getDeclaredMethod("onCleared").apply { isAccessible = true }.invoke(model)
+      }
+      val future = onMain {
+        MediaController.Builder(
+          application,
+          SessionToken(application, ComponentName(application, DaisyPlaybackService::class.java)),
+        ).buildAsync()
+      }
+      controller = future.get(10, TimeUnit.SECONDS)
+    }
+  }
+
+  @Test
+  fun playbackResumptionAfterServiceRestartUsesSavedPositionAndStartsOneSession() {
+    onMain { controller.seekTo(0, 32_000L) }
+    await { container.libraryRepository.get(BOOK_ID)?.lastPosition?.globalMs == 32_000L }
+    onMain { controller.release() }
+
+    DaisyPlaybackService.requestShutdown(application)
+    SystemClock.sleep(1_000L)
+
+    val future = onMain {
+      MediaController.Builder(
+        application,
+        SessionToken(application, ComponentName(application, DaisyPlaybackService::class.java)),
+      ).buildAsync()
+    }
+    controller = future.get(10, TimeUnit.SECONDS)
+    onMain { controller.play() }
+
+    await(15_000L) { onMain { controller.mediaItemCount > 0 } }
+    await(15_000L) { onMain { controller.playbackState == Player.STATE_READY } }
+    await(15_000L) { onMain { controller.isPlaying } }
+    assertTrue(onMain { controller.currentPosition in 30_000L..35_000L })
+    await { container.bookmarkRepository.sessionsForBook(BOOK_ID).any { it.stop == null } }
+    assertEquals(1, container.bookmarkRepository.sessionsForBook(BOOK_ID).count { it.stop == null })
+  }
+
+  @Test
+  fun openingAnotherBookDuringALargeZipImportReachesReadyOrClearError() {
+    val otherId = "concurrent-open"
+    writeBook(otherId, "Concurrent boek")
+    val archive = File(application.cacheDir, "large-regression-import.zip")
+    val imported = AtomicReference<nl.simon.daisyspeler.data.LoadedBook?>()
+    val root = File(application.filesDir, "books/$BOOK_ID")
+    ZipOutputStream(archive.outputStream()).use { zip ->
+      for (name in listOf("ncc.html", "s.smil", "audio.wav")) {
+        zip.putNextEntry(ZipEntry(name))
+        root.resolve(name).inputStream().use { it.copyTo(zip) }
+        zip.closeEntry()
+      }
+      repeat(8_000) { index ->
+        zip.putNextEntry(ZipEntry("filler/$index.bin"))
+        zip.write(ByteArray(512))
+        zip.closeEntry()
+      }
+    }
+    val importThread =
+      thread {
+        try {
+          imported.set(runBlocking { container.bookImporter.importZip(Uri.fromFile(archive)) })
+        } catch (_: Throwable) {
+          // Import failure is allowed; this test only verifies that opening book B stays bounded.
+        }
+      }
+    val model =
+      onMain {
+        PlayerViewModel(container, otherId, loadTimeoutMs = 15_000L, readyGraceMs = 300L)
+      }
+    try {
+      await(20_000L) { !model.playback.value.isLoading }
+      if (model.playback.value.loadState == PlaybackLoadState.ERROR) {
+        assertNotNull(model.playback.value.loadError)
+        onMain { model.retryLoad() }
+        await(20_000L) { !model.playback.value.isLoading }
+      }
+      assertTrue(
+        "Expected READY or an explicit error, got ${model.playback.value.loadState}",
+        model.playback.value.loadState == PlaybackLoadState.READY ||
+          model.playback.value.loadState == PlaybackLoadState.ERROR,
+      )
+      if (model.playback.value.loadState == PlaybackLoadState.READY) {
+        assertEquals("Concurrent boek", model.book.value?.title)
+      } else {
+        assertNotNull(model.playback.value.loadError)
+      }
+    } finally {
+      onMain {
+        PlayerViewModel::class.java.getDeclaredMethod("onCleared").apply { isAccessible = true }.invoke(model)
+      }
+      importThread.join(20_000L)
+      command(PlaybackCommands.UNLOAD_BOOK, Bundle().apply { putString(PlaybackCommands.KEY_BOOK_ID, otherId) })
+      container.bookRepository.forget(otherId)
+      container.libraryRepository.remove(otherId)
+      container.bookmarkRepository.removeBook(otherId)
+      imported.get()?.let { loaded ->
+        container.libraryRepository.get(loaded.id)?.let(container.bookRepository::deleteLocalFiles)
+        container.libraryRepository.remove(loaded.id)
+        container.bookmarkRepository.removeBook(loaded.id)
+        container.bookRepository.forget(loaded.id)
+      }
+      archive.delete()
+    }
+  }
+
+  @Test
+  fun readyWithoutMediaDoesNotLeaveTheLoadingScreenSpinning() {
+    val model =
+      onMain {
+        PlayerViewModel(container, BOOK_ID, loadTimeoutMs = 8_000L, readyGraceMs = 150L)
+      }
     try {
       val controllerField = PlayerViewModel::class.java.getDeclaredField("controller").apply { isAccessible = true }
       await { onMain { controllerField.get(model) != null } }
+      await { model.playback.value.loadState == PlaybackLoadState.READY }
       command(PlaybackCommands.UNLOAD_BOOK, Bundle().apply { putString(PlaybackCommands.KEY_BOOK_ID, BOOK_ID) })
       await { onMain { controller.mediaItemCount == 0 } }
       onMain {
-        PlayerViewModel::class.java.getDeclaredMethod("startLoadTimeout").apply { isAccessible = true }.invoke(model)
         PlayerViewModel::class.java.getDeclaredMethod("applySessionExtras", Bundle::class.java)
           .apply { isAccessible = true }
           .invoke(model, Bundle().apply {
             putString(PlaybackCommands.KEY_LOAD_BOOK_ID, BOOK_ID)
-            putString(PlaybackCommands.KEY_LOAD_STATE, PlaybackLoadState.LOADING.name)
+            putString(PlaybackCommands.KEY_LOAD_STATE, PlaybackLoadState.READY.name)
           })
       }
-      await(22_000L) { model.playback.value.loadState == PlaybackLoadState.ERROR }
+      // The inconsistent READY is repaired with one reload, or it becomes an explicit error.
+      await(10_000L) { !model.playback.value.isLoading }
+      assertTrue(
+        model.playback.value.loadState == PlaybackLoadState.READY ||
+          model.playback.value.loadState == PlaybackLoadState.ERROR,
+      )
+      if (model.playback.value.loadState == PlaybackLoadState.READY) {
+        await { onMain { controller.mediaItemCount > 0 } }
+      } else {
+        assertNotNull(model.playback.value.loadError)
+      }
+    } finally {
+      onMain {
+        PlayerViewModel::class.java.getDeclaredMethod("onCleared").apply { isAccessible = true }.invoke(model)
+      }
+    }
+  }
+
+  @Test
+  fun retryAfterLoadErrorStartsANewSuccessfulAttempt() {
+    val model =
+      onMain {
+        PlayerViewModel(container, BOOK_ID, loadTimeoutMs = 8_000L, readyGraceMs = 150L)
+      }
+    try {
+      val controllerField = PlayerViewModel::class.java.getDeclaredField("controller").apply { isAccessible = true }
+      await { onMain { controllerField.get(model) != null } }
+      onMain {
+        PlayerViewModel::class.java.getDeclaredMethod("applySessionExtras", Bundle::class.java)
+          .apply { isAccessible = true }
+          .invoke(model, Bundle().apply {
+            putString(PlaybackCommands.KEY_LOAD_BOOK_ID, BOOK_ID)
+            putString(PlaybackCommands.KEY_LOAD_STATE, PlaybackLoadState.ERROR.name)
+            putString(PlaybackCommands.KEY_LOAD_ERROR, "testfout")
+          })
+      }
+      await { model.playback.value.loadState == PlaybackLoadState.ERROR }
+
+      onMain { model.retryLoad() }
+
+      await(10_000L) { model.playback.value.loadState == PlaybackLoadState.READY }
       assertFalse(model.playback.value.isLoading)
-      assertNotNull(model.error.value)
+      assertEquals(null, model.playback.value.loadError)
     } finally {
       onMain {
         PlayerViewModel::class.java.getDeclaredMethod("onCleared").apply { isAccessible = true }.invoke(model)
@@ -349,11 +584,11 @@ class PlaybackRegressionTest {
     }
   }
 
-  private fun writeBook() {
-    container.bookmarkRepository.removeBook(BOOK_ID)
-    val root = File(application.filesDir, "books/$BOOK_ID").apply { mkdirs() }
+  private fun writeBook(bookId: String = BOOK_ID, title: String = "Regressietest") {
+    container.bookmarkRepository.removeBook(bookId)
+    val root = File(application.filesDir, "books/$bookId").apply { mkdirs() }
     root.resolve("ncc.html").writeText("""
-      <html><head><title>Regressietest</title></head><body>
+      <html><head><title>$title</title></head><body>
       <h1><a href="s.smil#p1">Een</a></h1><h1><a href="s.smil#p2">Twee</a></h1>
       </body></html>
     """.trimIndent())
@@ -369,9 +604,9 @@ class PlaybackRegressionTest {
       .putInt(16).putShort(1).putShort(1).putInt(8_000).putInt(16_000).putShort(2).putShort(16)
       .put("data".toByteArray()).putInt(dataSize).array()
     root.resolve("audio.wav").outputStream().use { it.write(header); it.write(ByteArray(dataSize)) }
-    container.bookRepository.forget(BOOK_ID)
+    container.bookRepository.forget(bookId)
     container.libraryRepository.addOrUpdate(LibraryEntry(
-      id = BOOK_ID, treeUri = "file://regression", title = "Regressietest", author = null,
+      id = bookId, treeUri = "file://$bookId", title = title, author = null,
       durationMs = 60_000L, tocCount = 2, addedAtEpochMs = 1L,
       sourceType = LibrarySourceType.ZIP, localDir = root.absolutePath,
     ))
