@@ -1,7 +1,8 @@
 package nl.simon.daisyspeler.ui.player
 
-import nl.simon.daisyspeler.playback.PlaybackLoadState
-
-internal fun isBookLoading(loadState: PlaybackLoadState, hasBookMedia: Boolean): Boolean =
-  loadState != PlaybackLoadState.ERROR &&
-    (loadState == PlaybackLoadState.LOADING || !hasBookMedia)
+/**
+ * The loading screen follows the attempt state, not only the presence of media. A READY service
+ * answer without media is first repaired and eventually becomes an error in [PlayerLoadStateMachine].
+ */
+internal fun isBookLoading(loadState: PlayerLoadSnapshot, hasBookMedia: Boolean): Boolean =
+  loadState.isLoading || (loadState.isReady && !hasBookMedia)

@@ -16,7 +16,14 @@ object PlaybackCommands {
 
   const val KEY_LOAD_STATE = "loadState"
   const val KEY_LOAD_BOOK_ID = "loadBookId"
+  const val KEY_LOAD_REQUEST_ID = "loadRequestId"
+  const val KEY_LOAD_FORCE = "loadForce"
   const val KEY_LOAD_ERROR = "loadError"
+  const val KEY_MEDIA_AVAILABLE = "mediaAvailable"
+  const val KEY_PLAY_WHEN_READY = "playWhenReady"
+  const val KEY_SUPPRESSION_REASON = "suppressionReason"
+  const val KEY_AUDIO_FOCUS_LOST = "audioFocusLost"
+  const val KEY_PLAYBACK_ERROR = "playbackError"
 }
 
 enum class PlaybackLoadState {
