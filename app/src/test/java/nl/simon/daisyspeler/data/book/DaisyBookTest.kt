@@ -56,6 +56,36 @@ class DaisyBookTest {
   }
 
   @Test
+  fun `saved global position disambiguates repeated audio in resume and bookmarks`() {
+    val repeated = book(segments = listOf(
+      AudioSegment(0, "a.mp3", 0L, 3_000L, 0L),
+      AudioSegment(1, "a.mp3", 0L, 3_000L, 3_000L),
+    ))
+    val (segment, offset) = requireNotNull(repeated.segmentForSource("a.mp3", 1_000L, 4_000L))
+    assertEquals(1, segment.index)
+    assertEquals(1_000L, offset)
+    assertEquals(4_000L, repeated.positionAt(segment.index, offset)?.globalMs)
+  }
+
+  @Test
+  fun `inconsistent global hint falls back to the existing source based restore`() {
+    val (segment, offset) = requireNotNull(book().segmentForSource("a.mp3", 2_500L, 100L))
+    assertEquals(1, segment.index)
+    assertEquals(500L, offset)
+    assertNull(book().segmentForSource("missing.mp3", 2_500L, 2_500L))
+  }
+
+  @Test
+  fun `saved end of a repeated clip does not jump to the end of the book`() {
+    val repeated = book(segments = listOf(
+      AudioSegment(0, "a.mp3", 0L, 3_000L, 0L),
+      AudioSegment(1, "a.mp3", 0L, 3_000L, 3_000L),
+    ))
+    val (segment, offset) = requireNotNull(repeated.segmentForSource("a.mp3", 3_000L, 3_000L))
+    assertEquals(3_000L, repeated.positionAt(segment.index, offset)?.globalMs)
+  }
+
+  @Test
   fun `next heading does not jump back after the last heading`() {
     assertNull(book().headingTarget(positionMs = 2_500L, forward = true))
   }

@@ -131,6 +131,9 @@ Vereisten: JDK 17 en Android SDK 36.
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
+Zie [Regressietests](docs/regression-tests.md) voor de aanvullende controles en
+Android-tests met een aparte testinstallatie.
+
 De debug-APK staat daarna in:
 
 ```text

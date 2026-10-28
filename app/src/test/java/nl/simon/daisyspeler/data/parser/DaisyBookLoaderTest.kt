@@ -9,6 +9,54 @@ import java.nio.charset.Charset
 
 class DaisyBookLoaderTest {
   @Test
+  fun `backwards overlapping clips keep their order duration and navigation`() {
+    val book = loadClips(10_000L to 20_000L, 0L to 15_000L)
+
+    assertEquals(25_000L, book.totalDurationMs)
+    assertEquals(listOf(10_000L, 0L), book.segments.map { it.clipStartMs })
+    assertEquals(listOf(0L, 10_000L), book.toc.map { it.globalMs })
+    assertEquals(listOf(0, 1), book.toc.map { it.segmentIndex })
+    assertEquals(listOf(0L, 0L), book.toc.map { it.offsetMs })
+  }
+
+  @Test
+  fun `repeated clips are played twice instead of being merged`() {
+    val book = loadClips(0L to 1_000L, 0L to 1_000L)
+
+    assertEquals(2_000L, book.totalDurationMs)
+    assertEquals(2, book.segments.size)
+    assertEquals(listOf(0L, 1_000L), book.toc.map { it.globalMs })
+  }
+
+  @Test
+  fun `only small boundary differences are tolerated when merging clips`() {
+    for (boundary in listOf(940L, 1_000L, 1_060L)) {
+      val book = loadClips(0L to 1_000L, boundary to 2_000L)
+      assertEquals(1, book.segments.size)
+      assertEquals(2_000L, book.totalDurationMs)
+    }
+    val overlapping = loadClips(0L to 10_000L, 5_000L to 15_000L)
+    assertEquals(2, overlapping.segments.size)
+    assertEquals(20_000L, overlapping.totalDurationMs)
+  }
+
+  private fun loadClips(vararg clips: Pair<Long, Long>) =
+    DaisyBookLoader().load(
+      MemoryBookSource.fromText(
+        mapOf(
+          "ncc.html" to "<html><head><title>Test</title></head><body>" +
+            clips.indices.joinToString("") { "<h1><a href='s.smil#p$it'>Deel $it</a></h1>" } +
+            "</body></html>",
+          "s.smil" to "<smil><body><seq>" +
+            clips.mapIndexed { index, (start, end) ->
+              "<par id='p$index'><audio src='a.mp3' clip-begin='${start}ms' clip-end='${end}ms'/></par>"
+            }.joinToString("") + "</seq></body></smil>",
+          "a.mp3" to "",
+        )
+      )
+    )
+
+  @Test
   fun `loads daisy 202 without opf and resolves nested audio`() {
     val book = DaisyBookLoader().load(sampleBook())
 

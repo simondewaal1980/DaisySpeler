@@ -5,10 +5,80 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.file.Files
 
 class BookmarkRepositoryTest {
+  @Test
+  fun `failed session start does not publish a phantom session or block retry`() {
+    val directory = Files.createTempDirectory("bookmark-write-failure").toFile()
+    try {
+      val file = directory.resolve("bookmarks.json")
+      val repository = BookmarkRepository(file)
+      val position = BookPosition("a.mp3", 100L, 100L)
+      val blocker = directory.resolve("bookmarks.json.tmp")
+      check(blocker.mkdir())
+
+      assertThrows(java.io.IOException::class.java) {
+        repository.recordStart("book", position, now = 1L)
+      }
+      assertTrue(repository.sessionsForBook("book").isEmpty())
+
+      check(blocker.delete())
+      repository.recordStart("book", position, now = 2L)
+      assertEquals(2L, BookmarkRepository(file).sessionsForBook("book").single().start.createdAtEpochMs)
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `failed manual bookmark deletion preserves both bookmark collections`() {
+    val directory = Files.createTempDirectory("bookmark-delete-failure").toFile()
+    try {
+      val file = directory.resolve("bookmarks.json")
+      val repository = BookmarkRepository(file)
+      val position = BookPosition("a.mp3", 100L, 100L)
+      repository.recordStart("book", position, now = 1L)
+      repository.addManualBookmark("book", position, now = 2L)
+      val sessions = repository.sessions.value
+      val manual = repository.manualBookmarks.value
+      val blocker = directory.resolve("bookmarks.json.tmp")
+      check(blocker.mkdir())
+
+      assertThrows(java.io.IOException::class.java) { repository.removeBook("book") }
+      assertEquals(sessions, repository.sessions.value)
+      assertEquals(manual, repository.manualBookmarks.value)
+
+      check(blocker.delete())
+      repository.removeBook("book")
+      val reloaded = BookmarkRepository(file)
+      assertTrue(reloaded.sessions.value.isEmpty())
+      assertTrue(reloaded.manualBookmarks.value.isEmpty())
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `process restart preserves the existing twelve hour session policy`() {
+    val directory = Files.createTempDirectory("bookmark-restart").toFile()
+    try {
+      val file = directory.resolve("bookmarks.json")
+      val position = BookPosition("a.mp3", 100L, 100L)
+      BookmarkRepository(file).recordStart("book", position, now = 1L)
+
+      val restarted = BookmarkRepository(file)
+      restarted.recordStart("book", position.copy(globalMs = 500L), now = 60_000L)
+
+      assertEquals(1, restarted.sessionsForBook("book").size)
+      assertEquals(1L, restarted.sessionsForBook("book").single().start.createdAtEpochMs)
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
   @Test
   fun `records start and stop as one session and persists it`() {
     val file = Files.createTempDirectory("bookmarks").resolve("bookmarks.json").toFile()

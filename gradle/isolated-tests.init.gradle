@@ -1,0 +1,8 @@
+// Opt in with -I gradle/isolated-tests.init.gradle; normal builds keep their applicationId.
+gradle.beforeProject { project ->
+  project.plugins.withId('com.android.application') {
+    project.androidComponents.finalizeDsl { dsl ->
+      dsl.defaultConfig.applicationId = 'nl.simon.daisyspeler.regression'
+    }
+  }
+}

@@ -212,9 +212,10 @@ class BookRepository(
         File(coversRoot, "$bookId-${System.currentTimeMillis()}-${System.nanoTime()}.$extension")
       try {
         target.outputStream().use { it.write(bytes) }
+        // Keep the previous image until its replacement is durably registered in the library.
+        libraryRepository.updateCover(bookId, target.absolutePath)
         coversRoot.listFiles { file -> file != target && isCoverFile(file, bookId) }
           ?.forEach { it.delete() }
-        libraryRepository.updateCover(bookId, target.absolutePath)
         target.absolutePath
       } catch (cancelled: CancellationException) {
         target.delete()

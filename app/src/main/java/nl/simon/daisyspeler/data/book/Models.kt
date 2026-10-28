@@ -63,14 +63,27 @@ data class DaisyBook(
     return segment to (safe - segment.trackStartMs).coerceIn(0L, segment.durationMs)
   }
 
-  fun segmentForSource(sourcePath: String, sourceOffsetMs: Long): Pair<AudioSegment, Long>? {
+  fun segmentForSource(
+    sourcePath: String,
+    sourceOffsetMs: Long,
+    globalMs: Long? = null,
+  ): Pair<AudioSegment, Long>? {
     val candidates = segments.filter { it.sourcePath.equals(sourcePath, ignoreCase = true) }
     if (candidates.isEmpty()) return null
 
+    // The same source offset may be played more than once. Use a consistent saved global
+    // position to identify that occurrence; an outdated hint still falls back to the source.
+    val matching = candidates.filter {
+      sourceOffsetMs >= it.clipStartMs && sourceOffsetMs < it.clipEndMs
+    }
+    val hinted = globalMs?.let { global ->
+      (matching + candidates.filter { sourceOffsetMs == it.clipEndMs }).firstOrNull {
+        it.trackStartMs + (sourceOffsetMs - it.clipStartMs) == global
+      }
+    }
     val segment =
-      candidates.firstOrNull {
-        sourceOffsetMs >= it.clipStartMs && sourceOffsetMs < it.clipEndMs
-      } ?: candidates.firstOrNull { sourceOffsetMs < it.clipStartMs } ?: candidates.last()
+      hinted ?: matching.firstOrNull()
+        ?: candidates.firstOrNull { sourceOffsetMs < it.clipStartMs } ?: candidates.last()
     return segment to (sourceOffsetMs - segment.clipStartMs).coerceIn(0L, segment.durationMs)
   }
 

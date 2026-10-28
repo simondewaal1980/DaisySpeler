@@ -256,7 +256,7 @@ class PlayerViewModel(
     loadState = state
     when (state) {
       PlaybackLoadState.LOADING -> {
-        cancelLoadTimeout()
+        startLoadTimeout()
         _playback.value = _playback.value.copy(isLoading = true, loadState = state)
       }
       PlaybackLoadState.READY -> {
@@ -309,20 +309,17 @@ class PlayerViewModel(
           _error.value = "Kon het boek niet laden: ${error.message}"
         }
         .isSuccess
-    if (sent) startLoadTimeout()
+    if (sent && loadState == PlaybackLoadState.LOADING) startLoadTimeout()
     updatePlaybackState()
   }
 
   private fun startLoadTimeout() {
-    cancelLoadTimeout()
+    // Repeated LOADING updates must neither cancel nor extend the current deadline.
+    if (loadTimeoutJob?.isActive == true) return
     loadTimeoutJob =
       viewModelScope.launch {
         delay(LOAD_TIMEOUT_MS)
-        val current = controller ?: return@launch
-        if (current.mediaItemCount == 0 &&
-          loadState != PlaybackLoadState.READY &&
-          loadState != PlaybackLoadState.ERROR
-        ) {
+        if (controller != null && loadState == PlaybackLoadState.LOADING) {
           loadState = PlaybackLoadState.ERROR
           _playback.value =
             _playback.value.copy(isLoading = false, loadState = loadState)
@@ -350,7 +347,7 @@ class PlayerViewModel(
   private fun updatePlaybackState() {
     val controller = controller ?: return
     val book = _book.value ?: return
-    val mediaReady = controller.mediaItemCount > 0
+    val mediaReady = controller.currentMediaItem?.mediaId?.startsWith("$bookId:") == true
     val segment = book.segments.getOrNull(controller.currentMediaItemIndex)
     val global =
       segment?.let {
@@ -509,7 +506,7 @@ class PlayerViewModel(
   fun seekToBookmark(point: BookmarkPoint) {
     val controller = controller ?: return
     val book = _book.value ?: return
-    val target = book.segmentForSource(point.sourcePath, point.sourceOffsetMs)
+    val target = book.segmentForSource(point.sourcePath, point.sourceOffsetMs, point.globalMs)
     if (target != null) {
       controller.seekTo(target.first.index, target.second)
     } else {

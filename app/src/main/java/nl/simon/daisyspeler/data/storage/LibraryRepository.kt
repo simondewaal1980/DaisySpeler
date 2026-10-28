@@ -62,7 +62,7 @@ class LibraryRepository(
 
   private fun persist(entries: List<LibraryEntry>) {
     val sorted = entries.sortedByDescending { it.addedAtEpochMs }
-    _entries.value = sorted
     store.write(LibraryData(sorted))
+    _entries.value = sorted
   }
 }

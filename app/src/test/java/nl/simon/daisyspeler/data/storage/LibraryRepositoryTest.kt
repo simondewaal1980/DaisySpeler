@@ -3,10 +3,36 @@ package nl.simon.daisyspeler.data.storage
 import nl.simon.daisyspeler.data.book.BookPosition
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.file.Files
 
 class LibraryRepositoryTest {
+  @Test
+  fun `failed writes preserve published state and can be retried`() {
+    val directory = Files.createTempDirectory("library-write-failure").toFile()
+    try {
+      val file = directory.resolve("library.json")
+      val repository = LibraryRepository(file)
+      val entry = LibraryEntry("book", "content://book", "Boek", null, 1000L, 1, 1L)
+      repository.addOrUpdate(entry)
+      val blocker = directory.resolve("library.json.tmp")
+      check(blocker.mkdir())
+
+      assertThrows(java.io.IOException::class.java) {
+        repository.updateCover("book", "/covers/new.jpg")
+      }
+      assertEquals(entry, repository.get("book"))
+      assertEquals(entry, LibraryRepository(file).get("book"))
+
+      check(blocker.delete())
+      repository.updateCover("book", "/covers/new.jpg")
+      assertEquals("/covers/new.jpg", LibraryRepository(file).get("book")?.coverPath)
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
   @Test
   fun `loads old entries without zip fields`() {
     val file = Files.createTempDirectory("library").resolve("library.json").toFile()

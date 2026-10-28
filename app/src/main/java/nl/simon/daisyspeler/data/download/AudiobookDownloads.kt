@@ -150,9 +150,7 @@ class AudiobookDownloads(
             removePendingDownload(rawId)
             continue
           }
-          if (info.status == DownloadManager.STATUS_RUNNING ||
-            info.status == DownloadManager.STATUS_PENDING
-          ) {
+          if (isDownloadInProgress(info.status)) {
             continue
           }
 

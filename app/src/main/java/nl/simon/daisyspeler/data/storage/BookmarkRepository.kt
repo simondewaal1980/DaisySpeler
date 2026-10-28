@@ -125,9 +125,9 @@ class BookmarkRepository(file: File) {
     manual: List<ManualBookmark> = _manual.value,
   ) {
     val trimmed = BookmarkData(sessions = sessions, manual = manual).trimmed()
+    store.write(trimmed)
     _sessions.value = trimmed.sessions
     _manual.value = trimmed.manual
-    store.write(trimmed)
   }
 
   private fun BookmarkData.trimmed(): BookmarkData =

@@ -346,8 +346,11 @@ class DaisyBookLoader {
       val last = segments.lastOrNull()
       if (last != null &&
         last.sourcePath.equals(clip.sourcePath, true) &&
-        clip.startMs <= last.endMs + 60 &&
-        clip.endMs > last.startMs
+        // Only merge at a shared boundary. Repeated, backwards or substantially overlapping
+        // clips are separate playback instructions, not duplicate coverage to discard.
+        clip.startMs > last.startMs &&
+        clip.startMs - last.endMs in -60L..60L &&
+        clip.endMs > last.endMs
       ) {
         last.endMs = max(last.endMs, clip.endMs)
         clip.segment = last

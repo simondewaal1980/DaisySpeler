@@ -13,6 +13,7 @@ android {
         targetSdk = 36
         versionCode = 8
         versionName = "6.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
