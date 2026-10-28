@@ -2,7 +2,6 @@ package nl.simon.daisyspeler.ui.browser
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,9 +11,9 @@ import kotlinx.coroutines.withContext
 import nl.simon.daisyspeler.AppContainer
 import nl.simon.daisyspeler.data.download.AudiobookImportResult
 import nl.simon.daisyspeler.data.download.BrowserDownload
+import nl.simon.daisyspeler.data.download.DownloadEnqueueResult
 
 data class BookBrowserUiState(
-  val checkingDownloads: Boolean = false,
   val message: String? = null,
 )
 
@@ -22,6 +21,22 @@ data class BookBrowserUiState(
 class BookBrowserViewModel(private val container: AppContainer) : ViewModel() {
   private val _state = MutableStateFlow(BookBrowserUiState())
   val state: StateFlow<BookBrowserUiState> = _state.asStateFlow()
+  val checkingDownloads = container.downloadImportMonitor.checking
+  val importingFileName = container.audiobookDownloads.importingFileName
+
+  init {
+    viewModelScope.launch {
+      container.downloadImportMonitor.results.collect { result ->
+        val message = result.fold(
+          onSuccess = { imports ->
+            imports.mapNotNull { messageFor(it, folderLabel) }.joinToString("\n")
+          },
+          onFailure = { "Gedownloade boeken konden niet worden gecontroleerd." },
+        )
+        if (message.isNotBlank()) _state.value = _state.value.copy(message = message)
+      }
+    }
+  }
 
   /** Map onder Download waar gedownloade boeken terechtkomen. */
   val downloadFolder: StateFlow<String> = container.uiPreferences.downloadFolder
@@ -35,15 +50,17 @@ class BookBrowserViewModel(private val container: AppContainer) : ViewModel() {
         reportStoragePermissionDenied()
         return@launch
       }
-      val id =
+      val result =
         withContext(Dispatchers.IO) { container.audiobookDownloads.enqueue(request) }
       _state.value =
-        if (id == null) {
-          _state.value.copy(
+        when (result) {
+          DownloadEnqueueResult.Failed -> _state.value.copy(
             message = "De download kon niet worden gestart. Probeer de link opnieuw te openen.",
           )
-        } else {
-          _state.value.copy(
+          DownloadEnqueueResult.AlreadyDownloading -> _state.value.copy(
+            message = "Dit boek wordt al gedownload of wordt nog aan de bibliotheek toegevoegd.",
+          )
+          is DownloadEnqueueResult.Started -> _state.value.copy(
             message = "Download gestart. Het boek wordt opgeslagen in $folderLabel.",
           )
         }
@@ -92,29 +109,7 @@ class BookBrowserViewModel(private val container: AppContainer) : ViewModel() {
   }
 
   fun checkCompletedDownloads() {
-    if (_state.value.checkingDownloads) return
-    _state.value = _state.value.copy(checkingDownloads = true)
-    viewModelScope.launch {
-      val results =
-        try {
-          container.audiobookDownloads.importCompleted(container.bookImporter)
-        } catch (cancelled: CancellationException) {
-          throw cancelled
-        } catch (_: Throwable) {
-          _state.value =
-            _state.value.copy(
-              checkingDownloads = false,
-              message = "Gedownloade boeken konden niet worden gecontroleerd.",
-            )
-          return@launch
-        }
-      val messages = results.mapNotNull { messageFor(it, folderLabel) }
-      _state.value =
-        _state.value.copy(
-          checkingDownloads = false,
-          message = messages.takeIf { it.isNotEmpty() }?.joinToString("\n"),
-        )
-    }
+    container.downloadImportMonitor.check()
   }
 
   fun consumeMessage() {
