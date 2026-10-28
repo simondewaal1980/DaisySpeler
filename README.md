@@ -24,6 +24,8 @@ een `ncc.html`, SMIL-bestanden en audio (MP3/WAV).
   slaan.
 - De boekenplank sorteren op alfabetische titel of op laatst gelezen boek. De
   gekozen sortering blijft bewaard na een herstart.
+- Bij het openen vanuit de bibliotheek verschijnt een laadscherm met de boektitel
+  totdat het boek in de speler klaarstaat.
 - Vorige/volgende kop, zoeken met de schuifbalk, −15 seconden en +30 seconden.
 - Automatische bookmarks: elke keer dat het afspelen start of stopt wordt een
   start/stop-paar opgeslagen. De stopreden wordt bewaard (pauze, slaaptimer,

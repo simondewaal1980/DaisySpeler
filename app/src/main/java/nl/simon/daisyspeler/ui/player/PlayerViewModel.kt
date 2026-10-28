@@ -254,27 +254,12 @@ class PlayerViewModel(
     if (statusBookId != null && statusBookId != bookId) return
 
     loadState = state
-    when (state) {
-      PlaybackLoadState.LOADING -> {
-        cancelLoadTimeout()
-        _playback.value = _playback.value.copy(isLoading = true, loadState = state)
-      }
-      PlaybackLoadState.READY -> {
-        cancelLoadTimeout()
-        _playback.value = _playback.value.copy(isLoading = false, loadState = state)
-      }
-      PlaybackLoadState.ERROR -> {
-        cancelLoadTimeout()
-        val message =
-          extras.getString(PlaybackCommands.KEY_LOAD_ERROR) ?: "Boek kon niet worden geladen."
-        _playback.value =
-          _playback.value.copy(isLoading = false, loadState = state)
-        _error.value = message
-      }
-      PlaybackLoadState.IDLE -> {
-        cancelLoadTimeout()
-        _playback.value = _playback.value.copy(isLoading = false, loadState = state)
-      }
+    cancelLoadTimeout()
+    _playback.value =
+      _playback.value.copy(isLoading = isBookLoading(state, hasBookMedia()), loadState = state)
+    if (state == PlaybackLoadState.ERROR) {
+      _error.value =
+        extras.getString(PlaybackCommands.KEY_LOAD_ERROR) ?: "Boek kon niet worden geladen."
     }
   }
 
@@ -347,10 +332,15 @@ class PlayerViewModel(
       }
   }
 
+  private fun hasBookMedia(): Boolean =
+    controller?.let {
+      it.mediaItemCount > 0 && it.currentMediaItem?.mediaId?.startsWith("$bookId:") == true
+    } == true
+
   private fun updatePlaybackState() {
     val controller = controller ?: return
     val book = _book.value ?: return
-    val mediaReady = controller.mediaItemCount > 0
+    val mediaReady = hasBookMedia()
     val segment = book.segments.getOrNull(controller.currentMediaItemIndex)
     val global =
       segment?.let {
@@ -362,7 +352,7 @@ class PlayerViewModel(
     _playback.value =
       PlaybackUiState(
         isPlaying = controller.isPlaying,
-        isLoading = !mediaReady && loadState != PlaybackLoadState.ERROR,
+        isLoading = isBookLoading(loadState, mediaReady),
         globalMs = global,
         durationMs = book.totalDurationMs,
         heading = heading,

@@ -73,7 +73,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -92,6 +96,7 @@ import nl.simon.daisyspeler.data.storage.BookmarkSession
 import nl.simon.daisyspeler.data.storage.ManualBookmark
 import nl.simon.daisyspeler.data.storage.SleepTimerOptions
 import nl.simon.daisyspeler.data.storage.SleepTimerState
+import nl.simon.daisyspeler.playback.PlaybackLoadState
 import nl.simon.daisyspeler.playback.PlaybackSpeedOptions
 import nl.simon.daisyspeler.ui.components.BookCover
 import nl.simon.daisyspeler.ui.theme.DefaultIconSize
@@ -123,6 +128,7 @@ fun PlayerScreen(
   onOpenCoverBrowser: () -> Unit,
 ) {
   val viewModel: PlayerViewModel = viewModel(key = bookId) { PlayerViewModel(container, bookId) }
+  val entry = remember(bookId) { container.libraryRepository.get(bookId) }
   val book by viewModel.book.collectAsStateWithLifecycle()
   val coverPath by viewModel.coverPath.collectAsStateWithLifecycle()
   val playback by viewModel.playback.collectAsStateWithLifecycle()
@@ -138,6 +144,8 @@ fun PlayerScreen(
   var bookmarkLabel by remember { mutableStateOf<String?>(null) }
   val context = LocalContext.current
   val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+  val loading =
+    playback.isLoading || (book == null && playback.loadState != PlaybackLoadState.ERROR)
 
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshCover() }
 
@@ -153,7 +161,7 @@ fun PlayerScreen(
       TopAppBar(
         title = {
           Text(
-            book?.title ?: "Speler",
+            book?.title ?: entry?.title ?: "Speler",
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
           )
@@ -168,7 +176,7 @@ fun PlayerScreen(
           }
         },
         actions = {
-          IconButton(onClick = onOpenCoverBrowser) {
+          IconButton(onClick = onOpenCoverBrowser, enabled = !loading) {
             Icon(
               Icons.Default.ImageSearch,
               contentDescription = "Omslag zoeken",
@@ -181,29 +189,33 @@ fun PlayerScreen(
     snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     val currentBook = book
-    if (currentBook == null) {
+    if (loading) {
+      BookLoadingContent(
+        title = currentBook?.title ?: entry?.title,
+        onBack = onBack,
+        modifier = Modifier.fillMaxSize().padding(padding),
+      )
+      return@Scaffold
+    }
+    if (currentBook == null || playback.loadState == PlaybackLoadState.ERROR) {
       Box(
         modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
         contentAlignment = Alignment.Center,
       ) {
-        if (playback.isLoading) {
-          CircularProgressIndicator()
-        } else {
-          Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            Text(
-              "Dit boek kon niet worden geopend.",
-              style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-              "Ga terug naar de bibliotheek en probeer het opnieuw.",
-              style = MaterialTheme.typography.bodyMedium,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            FilledTonalButton(onClick = onBack) { Text("Terug naar bibliotheek") }
-          }
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          Text(
+            "Dit boek kon niet worden geopend.",
+            style = MaterialTheme.typography.titleMedium,
+          )
+          Text(
+            "Ga terug naar de bibliotheek en probeer het opnieuw.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          FilledTonalButton(onClick = onBack) { Text("Terug naar bibliotheek") }
         }
       }
       return@Scaffold
@@ -308,6 +320,41 @@ fun PlayerScreen(
         }
       },
     )
+  }
+}
+
+@Composable
+private fun BookLoadingContent(
+  title: String?,
+  onBack: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(
+    modifier = modifier.verticalScroll(rememberScrollState()).padding(32.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+  ) {
+    CircularProgressIndicator(modifier = Modifier.size(56.dp))
+    Text(
+      "Boek laden…",
+      style = MaterialTheme.typography.headlineSmall,
+      fontWeight = FontWeight.SemiBold,
+      modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+    if (!title.isNullOrBlank()) {
+      Text(
+        title,
+        style = MaterialTheme.typography.titleMedium,
+        textAlign = TextAlign.Center,
+      )
+    }
+    Text(
+      "Het boek wordt klaargemaakt om te beluisteren. Even geduld.",
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      textAlign = TextAlign.Center,
+    )
+    TextButton(onClick = onBack) { Text("Terug naar bibliotheek") }
   }
 }
 
