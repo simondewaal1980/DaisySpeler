@@ -56,6 +56,8 @@ gedownload.
   gekozen sortering blijft bewaard na een herstart.
 - De iconen in de bibliotheek kunnen worden vergroot via de vergrootglasknop.
 - Bij elk boek is de voortgang en de positie van **Verder luisteren** zichtbaar.
+- Bij het openen vanuit de bibliotheek verschijnt een laadscherm met de boektitel
+  totdat het boek in de speler klaarstaat.
 
 ### Speler
 
