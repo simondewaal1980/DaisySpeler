@@ -1,6 +1,6 @@
 # DaisySpeler
 
-**Versie 6.0**
+**Versie 6.1**
 
 Eenvoudige Android-speler voor DAISY 2.02-luisterboeken, met een Nederlandse
 interface. De app is bedoeld voor uitgepakte DAISY-boeken of ZIP-archieven met
@@ -174,7 +174,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - jsoup voor het lezen van NCC/OPF/SMIL-HTML
 - kotlinx.serialization voor lokale JSON-opslag
 - Min SDK 24, target/compile SDK 36
-- Versie 6.0 (`versionCode` 8)
+- Versie 6.1 (`versionCode` 9)
 
 Het app-icoon is een madeliefje met een play-knop in het hart. De adaptieve
 lagen staan in `app/src/main/res/drawable/ic_launcher_background.xml`,
@@ -185,8 +185,8 @@ De belangrijkste code staat in:
 
 - `app/src/main/java/nl/simon/daisyspeler/data/parser/` — DAISY-parser
 - `app/src/main/java/nl/simon/daisyspeler/data/importer/` — veilige ZIP-uitpak
-- `app/src/main/java/nl/simon/daisyspeler/data/download/` — downloadbrowser en
-  automatische import van ZIP-bestanden
+- `app/src/main/java/nl/simon/daisyspeler/data/download/` — downloadbrowser,
+  automatische import en opruiming van ZIP-bestanden
 - `app/src/main/java/nl/simon/daisyspeler/data/source/` — map- en ZIP-bronnen
 - `app/src/main/java/nl/simon/daisyspeler/data/storage/` — bibliotheek, bookmarks,
   slaaptimer en voorkeuren
