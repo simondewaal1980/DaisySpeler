@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import androidx.annotation.RequiresApi
@@ -48,7 +49,7 @@ sealed interface AudiobookImportResult {
  * folder name can be changed in the app and defaults to [DownloadFolders.DEFAULT_NAME].
  * DownloadManager keeps the transfer running when the app goes to the background. Completed ZIP
  * files are imported into the library on the next check, so leaving the browser does not lose a
- * finished download.
+ * finished download. Once the extracted book is safely stored, the downloaded ZIP is removed.
  */
 class AudiobookDownloads(
   private val context: Context,
@@ -220,6 +221,10 @@ class AudiobookDownloads(
               _importingFileName.value = null
             }
           removePendingDownload(rawId)
+          // The extracted copy is in app storage, so the downloaded archive is no longer needed.
+          // Only downloads enqueued by this app are removed; a ZIP that the user picked in the
+          // system file picker is never touched.
+          deleteDownloadedArchive(id)
           results += AudiobookImportResult.Imported(loaded.book.title.ifBlank { info.fileName })
         }
         results
@@ -274,6 +279,20 @@ class AudiobookDownloads(
       fileName.substring(0, dot) + "-$stamp" + fileName.substring(dot)
     } else {
       "$fileName-$stamp"
+    }
+  }
+
+  /**
+   * Removes the downloaded ZIP after its book has been imported. DownloadManager also deletes the
+   * file itself, so the shared Download folder does not slowly fill up with archives that are
+   * already available as extracted copies. A failed cleanup only logs a warning and never undoes
+   * the successful import.
+   */
+  private fun deleteDownloadedArchive(id: Long) {
+    val manager = context.getSystemService(DownloadManager::class.java)
+    val removed = runCatching { manager.remove(id) }.getOrDefault(0)
+    if (removed <= 0) {
+      Log.w(TAG, "Kon het gedownloade ZIP-bestand van download $id niet verwijderen.")
     }
   }
 
@@ -429,6 +448,7 @@ class AudiobookDownloads(
   )
 
   companion object {
+    private const val TAG = "DaisyDownloads"
     private const val PREFS_NAME = "daisy_downloads"
     private const val KEY_PENDING_DOWNLOADS = "pending_downloads"
     private const val KEY_IMPORT_ATTEMPTS = "import_attempts"

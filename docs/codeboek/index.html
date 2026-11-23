@@ -14,7 +14,7 @@
   <header class="hero">
     <div class="hero__inner">
       <div class="hero__copy">
-        <p class="eyebrow">Codeboek · mainbranch · versie 6.0</p>
+        <p class="eyebrow">Codeboek · mainbranch · versie 6.1</p>
         <h1>DaisySpeler<br><em>van binnenuit</em></h1>
         <p class="hero__lede">
           Van de eerste tik op een boek tot de laatste noot: lees hoe deze Android-app
@@ -157,7 +157,7 @@
         <h3>De drie getallen om te onthouden</h3>
         <div class="stat-row">
           <div class="stat">
-            <strong>6.0</strong>
+            <strong>6.1</strong>
             <span>app-versie</span>
           </div>
           <div class="stat">
@@ -649,8 +649,10 @@ data class LibraryEntry(
           <li>geeft bij een mapimport de tijdelijke leestoestemming weer vrij.</li>
         </ol>
         <p>
-          Het originele ZIP-bestand en een gekozen map blijven altijd staan. De app
-          ruimt alleen haar eigen kopieën op.
+          Een gekozen map en een zelf gekozen ZIP-bestand blijven altijd staan. Alleen
+          een gedownload ZIP-bestand verdwijnt al eerder: direct na een geslaagde
+          automatische import. De app ruimt dus nooit bestanden op die je zelf hebt
+          aangewezen.
         </p>
 
         <h3>Opnieuw importeren</h3>
@@ -697,8 +699,9 @@ data class LibraryEntry(
               bewaart de uitgepakte map. Daarna speelt het boek net als een mapimport.
             </p>
             <p class="small">
-              Het originele ZIP-bestand blijft staan. Bij verwijderen uit de bibliotheek
-              ruimt de app alleen de uitgepakte kopie op.
+              Een zelf gekozen ZIP-bestand blijft staan. Een ZIP die je via de
+              boekbrowser downloadt, verwijdert de app na een geslaagde import. Bij
+              verwijderen uit de bibliotheek ruimt de app alleen de uitgepakte kopie op.
             </p>
           </article>
         </div>
@@ -1510,8 +1513,8 @@ data class ManualBookmark(
           </li>
           <li class="flow__step">
             <span class="flow__num">4</span>
-            <strong>Importeren</strong>
-            <span>Alleen een ZIP-bestand wordt automatisch uitgepakt en aan de bibliotheek toegevoegd.</span>
+            <strong>Importeren en opruimen</strong>
+            <span>Alleen een ZIP-bestand wordt automatisch uitgepakt en aan de bibliotheek toegevoegd. Daarna verwijdert de app het gedownloade archief.</span>
           </li>
         </ol>
 
@@ -1546,6 +1549,13 @@ data class ManualBookmark(
           Een download die geen ZIP is, blijft in de downloadmap staan. De app meldt dat
           alleen ZIP-bestanden automatisch worden toegevoegd. Een mislukte import wordt
           maximaal drie keer opnieuw geprobeerd.
+        </p>
+        <p>
+          Zodra een gedownload ZIP-bestand volledig is uitgepakt en in de bibliotheek
+          staat, verwijdert de app het origineel met <code>DownloadManager.remove</code>.
+          Het uitgepakte boek in app-eigen opslag blijft staan. Mislukt het opruimen, dan
+          blijft alleen het ZIP-bestand achter; de import zelf is dan al klaar. Een ZIP
+          die je zelf via de systeemkiezer hebt gekozen, wordt nooit verwijderd.
         </p>
 
         <div class="callout callout--warn">
@@ -1836,7 +1846,7 @@ Scaffold(
               <tr><td><code>data/storage/BookmarkRepository.kt</code></td><td>Sessies en handmatige bookmarks beheren.</td><td>Gemiddeld</td></tr>
               <tr><td><code>data/storage/SleepTimerManager.kt</code></td><td>De slaaptimer starten, stoppen en bewaren.</td><td>Makkelijk</td></tr>
               <tr><td><code>data/storage/UiPreferences.kt</code></td><td>Grote iconen en downloadmap bewaren.</td><td>Makkelijk</td></tr>
-              <tr><td><code>data/download/AudiobookDownloads.kt</code></td><td>DownloadManager, mappen en import volgen.</td><td>Gevorderd</td></tr>
+              <tr><td><code>data/download/AudiobookDownloads.kt</code></td><td>DownloadManager, mappen, import volgen en gedownloade archieven opruimen.</td><td>Gevorderd</td></tr>
               <tr><td><code>data/download/DownloadImportMonitor.kt</code></td><td>Importchecks in de achtergrond starten.</td><td>Gemiddeld</td></tr>
               <tr><td><code>data/website/AudiobookSite.kt</code></td><td>De twee ondersteunde boekwebsites.</td><td>Makkelijk</td></tr>
               <tr><td><code>data/cover/CoverImageDownloader.kt</code></td><td>Een gekozen omslagafbeelding downloaden.</td><td>Gemiddeld</td></tr>
@@ -1870,7 +1880,7 @@ Scaffold(
               <tr><td><code>files/books/&lt;id&gt;/</code></td><td>Uitgepakte ZIP-boeken.</td></tr>
               <tr><td><code>files/covers/</code></td><td>Lokale omslagafbeeldingen.</td></tr>
               <tr><td>SharedPreferences</td><td>Interface-instellingen, laatste boek, snelheid, downloadmap en wachtende downloads.</td></tr>
-              <tr><td><code>Download/audioboeken/</code></td><td>Gedownloade ZIP-bestanden, gedeeld met de gebruiker.</td></tr>
+              <tr><td><code>Download/audioboeken/</code></td><td>Tijdelijke gedownloade ZIP-bestanden; na een geslaagde import ruimt de app ze op.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1911,7 +1921,7 @@ Scaffold(
           </article>
           <article class="mini-card">
             <h4>Import en download</h4>
-            <p>ZIP-beveiliging, downloadstatussen, mappen en dubbele downloads.</p>
+            <p>ZIP-beveiliging, downloadstatussen, mappen, dubbele downloads en het opruimen van gedownloade archieven.</p>
           </article>
           <article class="mini-card">
             <h4>Speler</h4>
@@ -2196,8 +2206,8 @@ Scaffold(
     <div class="footer__inner">
       <p>
         <strong>DaisySpeler — codeboek voor beginners.</strong>
-        Gebaseerd op de mainbranch, commit <code>8a1fe33</code>, op 28 oktober 2026.
-        App-versie 6.0.
+        Gebaseerd op de mainbranch, bijgewerkt op 23 november 2026.
+        App-versie 6.1.
       </p>
       <p>
         DaisySpeler is vrije software onder de GPLv3-licentie.

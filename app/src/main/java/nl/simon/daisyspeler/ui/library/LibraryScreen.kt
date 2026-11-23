@@ -363,8 +363,8 @@ fun LibraryScreen(
         Spacer(Modifier.height(4.dp))
         Text(
           "Log in met je eigen account en download het boek. ZIP-bestanden worden " +
-            "automatisch aan de bibliotheek toegevoegd. Downloads komen in " +
-            "Download/$downloadFolder.",
+            "automatisch aan de bibliotheek toegevoegd en daarna opgeruimd. Downloads " +
+            "komen tijdelijk in Download/$downloadFolder.",
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

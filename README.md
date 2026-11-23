@@ -1,6 +1,6 @@
 # DaisySpeler
 
-**Versie 6.0**
+**Versie 6.1**
 
 Eenvoudige Android-speler voor DAISY 2.02-luisterboeken, met een Nederlandse
 interface. De app is bedoeld voor uitgepakte DAISY-boeken of ZIP-archieven met
@@ -25,7 +25,8 @@ gedownload.
 - ZIP-bestanden die via de boekbrowser binnenkomen, worden automatisch aan de
   bibliotheek toegevoegd. Dat gebeurt bij de downloadmelding, bij terugkeer in de
   app of met de knop **Toevoegen**. Mislukte imports worden enkele keren opnieuw
-  geprobeerd.
+  geprobeerd. Na een geslaagde import verwijdert de app het gedownloade
+  ZIP-bestand; het uitgepakte boek blijft in app-eigen opslag staan.
 - Andere gedownloade bestanden blijven in de downloadmap staan en kunnen
   handmatig worden toegevoegd.
 
@@ -117,13 +118,14 @@ brede opslagrechten.
 
 De app onthoudt een gekozen map via een persistente URI-toestemming. Als de map
 wordt verplaatst of verwijderd, kan het boek niet meer worden geopend. Een ZIP
-wordt bij import uitgepakt naar app-eigen opslag; het originele ZIP-bestand
-blijft staan. Als je een ZIP-boek uit de bibliotheek verwijdert, worden de
-uitgepakte bestanden verwijderd. Boekgegevens, bookmarks en de slaaptimer worden
-lokaal in de app opgeslagen. De coverbrowser en de boekbrowser gebruiken
-internet: de eerste opent Google Afbeeldingen en downloadt de gekozen afbeelding,
-de tweede opent de boekwebsites en downloadt ZIP-bestanden. De rest van de app
-werkt zonder netwerkverbinding.
+wordt bij import uitgepakt naar app-eigen opslag; een zelf gekozen ZIP-bestand
+blijft staan. Een ZIP die je via de boekbrowser hebt gedownload, verwijdert de
+app na een geslaagde import. Als je een ZIP-boek uit de bibliotheek verwijdert,
+worden de uitgepakte bestanden verwijderd. Boekgegevens, bookmarks en de
+slaaptimer worden lokaal in de app opgeslagen. De coverbrowser en de
+boekbrowser gebruiken internet: de eerste opent Google Afbeeldingen en
+downloadt de gekozen afbeelding, de tweede opent de boekwebsites en downloadt
+ZIP-bestanden. De rest van de app werkt zonder netwerkverbinding.
 
 ## Bouwen en testen
 
@@ -172,7 +174,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - jsoup voor het lezen van NCC/OPF/SMIL-HTML
 - kotlinx.serialization voor lokale JSON-opslag
 - Min SDK 24, target/compile SDK 36
-- Versie 6.0 (`versionCode` 8)
+- Versie 6.1 (`versionCode` 9)
 
 Het app-icoon is een madeliefje met een play-knop in het hart. De adaptieve
 lagen staan in `app/src/main/res/drawable/ic_launcher_background.xml`,
@@ -183,8 +185,8 @@ De belangrijkste code staat in:
 
 - `app/src/main/java/nl/simon/daisyspeler/data/parser/` — DAISY-parser
 - `app/src/main/java/nl/simon/daisyspeler/data/importer/` — veilige ZIP-uitpak
-- `app/src/main/java/nl/simon/daisyspeler/data/download/` — downloadbrowser en
-  automatische import van ZIP-bestanden
+- `app/src/main/java/nl/simon/daisyspeler/data/download/` — downloadbrowser,
+  automatische import en opruiming van ZIP-bestanden
 - `app/src/main/java/nl/simon/daisyspeler/data/source/` — map- en ZIP-bronnen
 - `app/src/main/java/nl/simon/daisyspeler/data/storage/` — bibliotheek, bookmarks,
   slaaptimer en voorkeuren
