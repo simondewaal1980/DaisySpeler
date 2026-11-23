@@ -25,7 +25,8 @@ gedownload.
 - ZIP-bestanden die via de boekbrowser binnenkomen, worden automatisch aan de
   bibliotheek toegevoegd. Dat gebeurt bij de downloadmelding, bij terugkeer in de
   app of met de knop **Toevoegen**. Mislukte imports worden enkele keren opnieuw
-  geprobeerd.
+  geprobeerd. Na een geslaagde import verwijdert de app het gedownloade
+  ZIP-bestand; het uitgepakte boek blijft in app-eigen opslag staan.
 - Andere gedownloade bestanden blijven in de downloadmap staan en kunnen
   handmatig worden toegevoegd.
 
@@ -117,13 +118,14 @@ brede opslagrechten.
 
 De app onthoudt een gekozen map via een persistente URI-toestemming. Als de map
 wordt verplaatst of verwijderd, kan het boek niet meer worden geopend. Een ZIP
-wordt bij import uitgepakt naar app-eigen opslag; het originele ZIP-bestand
-blijft staan. Als je een ZIP-boek uit de bibliotheek verwijdert, worden de
-uitgepakte bestanden verwijderd. Boekgegevens, bookmarks en de slaaptimer worden
-lokaal in de app opgeslagen. De coverbrowser en de boekbrowser gebruiken
-internet: de eerste opent Google Afbeeldingen en downloadt de gekozen afbeelding,
-de tweede opent de boekwebsites en downloadt ZIP-bestanden. De rest van de app
-werkt zonder netwerkverbinding.
+wordt bij import uitgepakt naar app-eigen opslag; een zelf gekozen ZIP-bestand
+blijft staan. Een ZIP die je via de boekbrowser hebt gedownload, verwijdert de
+app na een geslaagde import. Als je een ZIP-boek uit de bibliotheek verwijdert,
+worden de uitgepakte bestanden verwijderd. Boekgegevens, bookmarks en de
+slaaptimer worden lokaal in de app opgeslagen. De coverbrowser en de
+boekbrowser gebruiken internet: de eerste opent Google Afbeeldingen en
+downloadt de gekozen afbeelding, de tweede opent de boekwebsites en downloadt
+ZIP-bestanden. De rest van de app werkt zonder netwerkverbinding.
 
 ## Bouwen en testen
 
